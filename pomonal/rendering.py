@@ -1,0 +1,175 @@
+"""Pure, terminal-cell-aware layouts for the Pomonal focus screen."""
+
+from dataclasses import dataclass
+import math
+import unicodedata
+
+
+@dataclass(frozen=True)
+class DisplaySnapshot:
+    task: str
+    phase: str
+    remaining_seconds: float
+    progress: float
+    completed_focus: int = 0
+    paused: bool = False
+    waiting: bool = False
+    next_phase: str = "short_break"
+    today_focus_seconds: float = 0
+    today_completed: int = 0
+    feedback: str = ""
+    command: str = ""
+
+
+@dataclass(frozen=True)
+class Frame:
+    text: str
+    lines: tuple[str, ...]
+    cursor_row: int
+    cursor_column: int
+    layout: str
+
+
+def clean_text(value):
+    """Remove control characters, including invisible terminal controls."""
+    return "".join(character if character.isprintable() or unicodedata.combining(character)
+                   else " " for character in str(value))
+
+
+def cell_width(value):
+    return sum(0 if unicodedata.category(character) in ("Mn", "Me") else
+               2 if unicodedata.east_asian_width(character) in ("W", "F") else 1
+               for character in clean_text(value))
+
+
+def clip_text(value, width, *, tail=False):
+    """Clip without splitting a wide glyph or its combining marks."""
+    clusters = []
+    for character in clean_text(value):
+        if unicodedata.category(character) in ("Mn", "Me"):
+            if clusters:
+                clusters[-1] += character
+        else:
+            clusters.append(character)
+    result = []
+    used = 0
+    source = reversed(clusters) if tail else clusters
+    for cluster in source:
+        size = cell_width(cluster)
+        if used + size > max(0, width):
+            break
+        result.append(cluster)
+        used += size
+    if tail:
+        result.reverse()
+    return "".join(result)
+
+
+def format_duration(seconds):
+    minutes, seconds = divmod(max(0, math.ceil(seconds)), 60)
+    return f"{minutes:02d}:{seconds:02d}"
+
+
+GLYPHS = {
+    "0": ("###", "# #", "# #", "# #", "###"),
+    "1": (" # ", "## ", " # ", " # ", "###"),
+    "2": ("###", "  #", "###", "#  ", "###"),
+    "3": ("###", "  #", "###", "  #", "###"),
+    "4": ("# #", "# #", "###", "  #", "  #"),
+    "5": ("###", "#  ", "###", "  #", "###"),
+    "6": ("###", "#  ", "###", "# #", "###"),
+    "7": ("###", "  #", "  #", "  #", "  #"),
+    "8": ("###", "# #", "###", "# #", "###"),
+    "9": ("###", "# #", "###", "  #", "###"),
+    ":": (" ", "#", " ", "#", " "),
+}
+
+
+def _digits(value, scale):
+    rows = [" ".join(GLYPHS[character][row] for character in value) for row in range(5)]
+    return ["".join(character * scale for character in row) for row in rows
+            for _ in range(scale)]
+
+
+def render_frame(snapshot, columns, rows, *, color=True, truecolor=False):
+    """Return a complete positioned frame without reading or writing a terminal."""
+    columns, rows = max(1, columns), max(1, rows)
+    width = max(0, columns - 1)
+    layout = "large" if columns >= 100 and rows >= 28 else (
+        "standard" if columns >= 64 and rows >= 20 else "compact")
+    time_text = format_duration(0 if snapshot.waiting else snapshot.remaining_seconds)
+    phase = clean_text(snapshot.phase).upper().replace("_", " ")
+    status = f"Ready for {snapshot.next_phase} | continue / quit" if snapshot.waiting else (
+        f"{phase} | PAUSED" if snapshot.paused else phase)
+    progress = 1.0 if snapshot.waiting else min(1.0, max(0.0, snapshot.progress))
+    bar_width = max(0, min(40, width - 9))
+    filled = int(progress * bar_width)
+    bar = "[" + "#" * filled + "-" * (bar_width - filled) + f"] {int(progress * 100):3d}%"
+    completed = snapshot.completed_focus
+    next_break = "long break" if (completed + (not snapshot.waiting)) % 4 == 0 else "short break"
+    cycle = f"{completed} completed | {next_break} next"
+    if snapshot.waiting:
+        cycle = f"{completed} completed | Next: {snapshot.next_phase.replace('_', ' ')}"
+    elif snapshot.phase != "focus":
+        cycle = f"{completed} completed | Focus next"
+    today = f"TODAY | Focus: {format_duration(snapshot.today_focus_seconds)} | Completed: {snapshot.today_completed}"
+    help_text = "Commands: continue, quit, help" if snapshot.waiting else "Commands: pause, resume, stop, help"
+    command = "> " + clip_text(snapshot.command, max(0, width - 2), tail=True)
+    lines = [""] * rows
+    accent_rows = set()
+
+    def put(row, text, centered=True, accent=False):
+        if not 0 <= row < rows:
+            return
+        text = clip_text(text, width)
+        indent = max(0, (width - cell_width(text)) // 2) if centered else 0
+        lines[row] = " " * indent + text
+        if accent:
+            accent_rows.add(row)
+
+    if layout != "compact":
+        body = ["POMONAL | " + status, ""]
+        scale = 2 if layout == "large" else 1
+        digits = _digits(time_text, scale)
+        if cell_width(digits[0]) <= width:
+            digit_start = len(body)
+            body.extend(digits)
+            accent_rows.update(range(digit_start, len(body)))
+            body.append(time_text)
+        else:
+            # Long minute counts remain complete at normal screen sizes.
+            body.extend(time_text[index:index + width] for index in range(0, len(time_text), width))
+        body.extend(["", snapshot.task, "", bar, cycle, today])
+        for index, line in enumerate(body):
+            put(index, line, accent=(line == time_text or line == bar or index == 0))
+        put(rows - 3, help_text)
+        put(rows - 2, snapshot.feedback, centered=False)
+        put(rows - 1, command, centered=False)
+    else:
+        # Reserve input space even when the window is only one or two rows tall.
+        content = [time_text + " | " + status, snapshot.task, bar, cycle, today, help_text]
+        feedback_rows = int(rows >= 4 and bool(snapshot.feedback))
+        for index, line in enumerate(content[:max(0, rows - 1 - feedback_rows)]):
+            put(index, line, centered=False, accent=index in (0, 2))
+        if feedback_rows:
+            put(rows - 2, snapshot.feedback, centered=False)
+        put(rows - 1, command, centered=False)
+
+    code = ""
+    if color:
+        if snapshot.paused:
+            code = "\033[93m"
+        elif snapshot.phase != "focus":
+            code = "\033[92m"
+        else:
+            code = "\033[38;2;96;165;250m" if truecolor else "\033[94m"
+    output = ["\033[H"]
+    for index, line in enumerate(lines):
+        output.append(f"\033[{index + 1};1H\033[2K")
+        if code and index in accent_rows:
+            output.extend((code, line, "\033[0m"))
+        else:
+            output.append(line)
+    cursor_column = min(columns, cell_width(lines[-1]) + 1)
+    output.append(f"\033[{rows};{cursor_column}H")
+    return Frame("".join(output), tuple(lines), rows, cursor_column, layout)

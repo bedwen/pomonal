@@ -1,0 +1,20 @@
+# Publish only product source, tests, and documentation.
+*
+
+!/.gitignore
+!/README.md
+
+!/pomonal/
+!/pomonal/__init__.py
+!/pomonal/__main__.py
+!/pomonal/application.py
+!/pomonal/domain.py
+!/pomonal/infrastructure.py
+!/pomonal/presentation.py
+!/pomonal/rendering.py
+
+!/tests/
+!/tests/test_cli.py
+!/tests/test_core.py
+!/tests/test_infrastructure.py
+!/tests/test_rendering.py
