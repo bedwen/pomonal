@@ -51,9 +51,14 @@ class Service:
         if self.state["active"] is not None:
             raise ValueError("An active or recoverable run already exists.")
         duration = minutes if minutes is not None else self.state["config"]["work_minutes"]
+        durations = dict(self.state["config"])
+        durations["work_minutes"] = duration
         self.state["active"] = {
             "task": task.strip(),
             "work_minutes": duration,
+            "durations": durations,
+            "task_id": None,
+            "tags": [],
             "completed_focus": 0,
             "waiting": False,
             "next_phase": None,
@@ -141,7 +146,7 @@ class Service:
         phase = active["next_phase"]
         minutes = (
             active["work_minutes"] if phase == "focus"
-            else self.state["config"][f"{phase}_minutes"]
+            else active["durations"][f"{phase}_minutes"]
         )
         active["session"] = new_session(active["task"], phase, minutes, self.clock.now())
         active["waiting"] = False

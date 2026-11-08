@@ -20,7 +20,7 @@ def positive_integer(value: object) -> bool:
 
 def default_state() -> dict:
     return {
-        "version": 1,
+        "version": 2,
         "config": {
             "work_minutes": 25,
             "short_break_minutes": 5,
@@ -28,6 +28,10 @@ def default_state() -> dict:
         },
         "history": [],
         "active": None,
+        "tasks": [],
+        "profiles": {},
+        "preferences": {"view": "dashboard", "profile": "default"},
+        "goal": None,
     }
 
 
@@ -47,4 +51,7 @@ def new_session(task: str, phase: str, minutes: int, now: datetime) -> dict:
         "planned_seconds": minutes * 60,
         "elapsed_seconds": 0.0,
         "status": "running",
+        "task_id": None,
+        "note": "",
+        "tags": [],
     }
