@@ -175,5 +175,21 @@ class RenderingTests(unittest.TestCase):
         self.assertEqual(clean_text("a\nb"), "a b")
 
 
+    def test_secondary_screens_keep_timer_and_paged_content(self):
+        for columns, rows in ((100, 28), (64, 20), (40, 10)):
+            frame = render_frame(replace(self.snapshot, screen="history", content_lines=("Saved record",),
+                                         page=2, total_pages=3), columns, rows)
+            text = "\n".join(frame.lines)
+            self.assertIn("24:15", text)
+            self.assertIn("HISTORY", text)
+            self.assertIn("Saved record", text)
+            self.assertIn("2/3", text)
+            self.assertTrue(all(cell_width(line) < columns for line in frame.lines))
+        waiting = replace(self.snapshot, screen="settings", waiting=True, next_phase="short_break")
+        self.assertIn("Ready for short_break", render_frame(waiting, 100, 28).text)
+        idle = replace(self.snapshot, idle=True, screen="tasks")
+        self.assertIn("IDLE", render_frame(idle, 64, 20).text)
+
+
 if __name__ == "__main__":
     unittest.main()
