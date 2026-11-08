@@ -36,7 +36,8 @@ class RenderingTests(unittest.TestCase):
         self.assertEqual(len(standard_pixels), 5)
         for frame in (large, standard):
             self.assertIn("24:15", "\n".join(frame.lines))
-            self.assertIn("Focus: 75:00 | Completed: 3", "\n".join(frame.lines))
+            self.assertIn("Focus: 75:00", "\n".join(frame.lines))
+            self.assertIn("Completed: 3", "\n".join(frame.lines))
             self.assertIn("2 completed | short break next", "\n".join(frame.lines))
 
     def test_color_palette_and_monochrome(self):
@@ -75,7 +76,64 @@ class RenderingTests(unittest.TestCase):
         seconds = 10**100
         frame = render_frame(replace(self.snapshot, remaining_seconds=seconds), 64, 20)
         expected = str(seconds // 60) + ":40"
-        self.assertIn(expected, "".join(line.strip() for line in frame.lines))
+        self.assertIn(expected, "".join(line.strip().strip("|").strip() for line in frame.lines))
+
+    def test_large_dashboard_has_main_and_separate_summary_panels(self):
+        frame = render_frame(replace(self.snapshot, upcoming_tasks=("Read a book", "Practice 日本語")), 100, 28)
+        text = "\n".join(frame.lines)
+        self.assertIn("+ TIMER", text)
+        self.assertIn("+ TODAY", text)
+        self.assertIn("+ UPCOMING TASKS", text)
+        self.assertIn("1. Read a book", text)
+        self.assertIn("2. Practice 日本語", text)
+        self.assertTrue(any(line.count("|") == 4 for line in frame.lines))
+        self.assertTrue(all(cell_width(line) <= 99 for line in frame.lines))
+
+    def test_standard_dashboard_stacks_summary_below_clock(self):
+        frame = render_frame(self.snapshot, 64, 20)
+        text = "\n".join(frame.lines)
+        self.assertIn("TODAY / UPCOMING", text)
+        self.assertIn("Upcoming: No queued tasks", text)
+        clock_row = next(index for index, line in enumerate(frame.lines) if "24:15" in line)
+        summary_row = next(index for index, line in enumerate(frame.lines) if "TODAY / UPCOMING" in line)
+        self.assertGreater(summary_row, clock_row)
+
+    def test_focus_view_omits_secondary_content_but_preserves_controls(self):
+        snapshot = replace(self.snapshot, view="focus", upcoming_tasks=("Private queue title",),
+                           feedback="Use view dashboard to return.", command="view dashboard")
+        for columns, rows in ((100, 28), (64, 20), (40, 10)):
+            with self.subTest(columns=columns, rows=rows):
+                frame = render_frame(snapshot, columns, rows)
+                text = "\n".join(frame.lines)
+                for unwanted in ("TODAY", "UPCOMING", "Private queue title", "completed", "3%"):
+                    self.assertNotIn(unwanted, text)
+                self.assertIn("24:15", text)
+                self.assertIn("Study algorithms", text)
+                self.assertIn("FOCUS", text)
+                self.assertIn("Use view dashboard to return.", text)
+                self.assertEqual(frame.lines[-1], "> view dashboard")
+                self.assertTrue(all(cell_width(line) < columns for line in frame.lines))
+
+    def test_focus_waiting_keeps_confirmation_and_feedback(self):
+        snapshot = replace(self.snapshot, view="focus", waiting=True, next_phase="short_break",
+                           feedback="Phase complete.")
+        for columns, rows in ((100, 28), (64, 20), (40, 10)):
+            with self.subTest(columns=columns, rows=rows):
+                text = "\n".join(render_frame(snapshot, columns, rows).lines)
+                self.assertIn("00:00", text)
+                self.assertIn("continue / quit", text)
+                self.assertIn("Phase complete.", text)
+                self.assertNotIn("TODAY", text)
+
+    def test_panel_layout_clips_unicode_queue_and_feedback_once(self):
+        snapshot = replace(self.snapshot, upcoming_tasks=("日本語 e\u0301 " * 50,) * 30,
+                           feedback="Unknown command.", command="x" * 100 + "resume")
+        for columns, rows in ((100, 28), (64, 20)):
+            with self.subTest(columns=columns, rows=rows):
+                frame = render_frame(snapshot, columns, rows)
+                self.assertTrue(all(cell_width(line) < columns for line in frame.lines))
+                self.assertEqual(sum("Unknown command." in line for line in frame.lines), 1)
+                self.assertTrue(frame.lines[-1].endswith("resume"))
 
     def test_unicode_clipping_and_command_tail(self):
         self.assertEqual(cell_width("日e\u0301"), 3)

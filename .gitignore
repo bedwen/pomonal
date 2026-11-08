@@ -13,6 +13,7 @@
 !/pomonal/presentation.py
 !/pomonal/rendering.py
 !/pomonal/state.py
+!/pomonal/preferences.py
 
 !/tests/
 !/tests/test_cli.py
@@ -20,3 +21,4 @@
 !/tests/test_infrastructure.py
 !/tests/test_rendering.py
 !/tests/test_migration.py
+!/tests/test_preferences.py

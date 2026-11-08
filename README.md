@@ -26,6 +26,10 @@ The module must be available on Python's import path. Running from this director
 
 ## Focus screen
 
+The dashboard uses bordered timer, daily summary, and upcoming-task panels. Large terminals place secondary panels beside the clock; standard terminals stack them. An empty task queue shows `No queued tasks`.
+
+While the timer is open, type `view focus` and press Enter for only the large clock, task, phase, and command field. Type `view dashboard` to restore details. The preference is saved and restored on the next run, including recovery. Switching views does not pause or reset the timer. Feedback and phase confirmation remain available in focus view.
+
 The default interface fills the terminal with a centered digital countdown, task name, elapsed progress bar, completed focus count, next phase, and today's finalized focus time and completed-session count. Active focus time appears in the countdown and progress bar; today's summary follows the finalized-session statistics described below. No daily goal is required or configured.
 
 The focus clock and progress bar are **blue**. Breaks are green and paused phases are yellow, with explicit phase and pause labels in every color mode. True-color terminals advertising `COLORTERM=truecolor` or `24bit` use blue `#60A5FA`; other terminals use bright ANSI blue. The application inherits your terminal background.
