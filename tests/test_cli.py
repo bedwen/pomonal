@@ -300,5 +300,21 @@ class CliTests(unittest.TestCase):
         self.assertNotEqual(self.cli("profile", "save", "classic", "--work", "1", "--short-break", "1", "--long-break", "1").returncode, 0)
 
 
+    def test_daily_goals_cli_and_workspace_dashboard(self):
+        self.assertIn("disabled", self.cli("goal", "show").stdout)
+        self.assertFalse((self.root / "data").exists())
+        self.assertEqual(self.cli("goal", "set", "--sessions", "2").returncode, 0)
+        process, master = self.terminal("ui", size=(100, 28))
+        self.wait_text(master, "Goal: 0/2 sessions")
+        os.write(master, b"goal set --minutes 10\n")
+        self.wait_text(master, "Goal: 0/10 minutes")
+        os.write(master, b"goal clear\n")
+        self.wait_text(master, "Daily goal: disabled")
+        os.write(master, b"exit\n")
+        self.assertEqual(process.wait(timeout=5), 0)
+        self.assertIn("disabled", self.cli("goal", "show").stdout)
+        self.assertNotEqual(self.cli("goal", "set", "--sessions", "2", "--minutes", "10").returncode, 0)
+
+
 if __name__ == "__main__":
     unittest.main()

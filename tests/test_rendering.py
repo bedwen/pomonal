@@ -191,5 +191,16 @@ class RenderingTests(unittest.TestCase):
         self.assertIn("IDLE", render_frame(idle, 64, 20).text)
 
 
+    def test_daily_goal_display_caps_indicator_and_focus_hides_it(self):
+        snapshot = replace(self.snapshot, goal_label="13/6 sessions", goal_progress=2)
+        for columns, rows in ((100, 28), (64, 20)):
+            text = "\n".join(render_frame(snapshot, columns, rows).lines)
+            self.assertIn("13/6 sessions", text)
+            self.assertIn("100%", text)
+            self.assertNotIn("200%", text)
+        text = "\n".join(render_frame(replace(snapshot, view="focus"), 100, 28).lines)
+        self.assertNotIn("13/6", text)
+
+
 if __name__ == "__main__":
     unittest.main()

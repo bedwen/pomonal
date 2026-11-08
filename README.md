@@ -82,6 +82,17 @@ Press **Ctrl+C** to save the cycle and exit. Ctrl+D also saves and exits. Run `s
 
 Time while the application is closed is never counted. Progress is checkpointed every five seconds and on state changes; unexpected termination can lose up to five seconds of progress. The countdown uses monotonic time, so changing the wall clock does not change its remaining duration.
 
+## Daily goals
+
+```bash
+python3 -m pomonal goal set --sessions 6
+python3 -m pomonal goal set --minutes 120
+python3 -m pomonal goal show
+python3 -m pomonal goal clear
+```
+
+Goals are initially disabled. Select one target type at a time: completed focus sessions or finalized active focus minutes. Cancelled/interrupted sessions contribute their recorded focus time to minute targets, but do not count as completed sessions. Active sessions, breaks, pauses, and application downtime are excluded. Progress uses the current local day; indicators stop at 100% while actual achieved totals remain visible. The dashboard and stats/settings screens show the configured goal; the same commands work in `ui`. Focus-only view hides goal details.
+
 ## Duration profiles
 
 ```bash

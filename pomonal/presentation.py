@@ -21,6 +21,7 @@ from .rendering import DisplaySnapshot, clean_text, clip_text, render_frame
 from .workspace import Workspace
 from .tasks import Tasks
 from .profiles import Profiles
+from .goals import Goals
 
 
 def positive(value):
@@ -87,6 +88,13 @@ def parser(*, embedded=False):
     profile_save.add_argument("--short-break", type=positive, required=True)
     profile_save.add_argument("--long-break", type=positive, required=True)
     profile_actions.add_parser("use").add_argument("name")
+    goal = commands.add_parser("goal", help="Set or inspect a daily focus goal.")
+    goal_actions = goal.add_subparsers(dest="action", required=True)
+    target = goal_actions.add_parser("set").add_mutually_exclusive_group(required=True)
+    target.add_argument("--sessions", type=positive)
+    target.add_argument("--minutes", type=positive)
+    goal_actions.add_parser("clear")
+    goal_actions.add_parser("show")
     return result
 
 
@@ -121,6 +129,19 @@ def profile_command(service, args):
         return [f"Profile saved: {args.name.strip().casefold()}"]
     profiles.use(args.name)
     return [f"Selected profile: {service.state['preferences']['profile']}"]
+
+
+def goal_command(service, args):
+    goals = Goals(service)
+    if args.action == "set":
+        kind = "sessions" if args.sessions is not None else "minutes"
+        goals.set(kind, args.sessions if kind == "sessions" else args.minutes)
+    elif args.action == "clear":
+        goals.clear()
+    progress = goals.progress()
+    return ["Daily goal: disabled" if progress is None else
+            f"Daily goal: {progress['achieved']:g}/{progress['target']} {progress['type']} "
+            f"({int(progress['fraction'] * 100)}%)"]
 
 
 def task_command(service, args):
@@ -199,6 +220,7 @@ class Terminal:
         else:
             upcoming = "focus"
         content, page, total_pages = self.workspace.content(self.dimensions()[1])
+        goal = Goals(self.service).progress()
         return DisplaySnapshot(
             task=active["task"] if active else "No active task", phase=phase, remaining_seconds=remaining,
             progress=progress, completed_focus=active["completed_focus"] if active else 0,
@@ -210,6 +232,8 @@ class Terminal:
             upcoming_tasks=tuple(task["title"] for task in self.service.state["tasks"] if not task["completed"]),
             screen=self.workspace.screen, content_lines=content, page=page, total_pages=total_pages,
             idle=active is None,
+            goal_label=(f"{goal['achieved']:g}/{goal['target']} {goal['type']}" if goal else ""),
+            goal_progress=goal["fraction"] if goal else None,
         )
 
     def render(self):
@@ -255,6 +279,11 @@ class Terminal:
             args = parser(embedded=True).parse_args([name, *parts[1:]])
             start_cycle(self.service, args)
             self.workspace.navigate("timer")
+        elif name == "goal":
+            if any(part in ("-h", "--help") for part in parts):
+                raise ValueError("Usage: goal set --sessions N | goal set --minutes N | goal clear/show")
+            args = parser(embedded=True).parse_args(parts)
+            self.message(goal_command(self.service, args)[0])
         elif name == "profile":
             if any(part in ("-h", "--help") for part in parts):
                 raise ValueError("Usage: profile list/save/use")
@@ -389,6 +418,7 @@ def run(args, repository):
     writes = args.command in ("start", "ui") or (args.command == "config" and args.action == "set")
     writes = writes or (args.command == "task" and args.action != "list")
     writes = writes or (args.command == "profile" and args.action != "list")
+    writes = writes or (args.command == "goal" and args.action != "show")
     if args.command in ("start", "ui"):
         if args.command == "start" and args.task is not None and not args.task.strip():
             raise ValueError("Task must not be empty.")
@@ -424,6 +454,9 @@ def run(args, repository):
             print(f"Total focus time: {duration(report['focus_seconds'])}")
             for task, seconds in sorted(report["tasks"].items()):
                 print(f"  {clean(task)}: {duration(seconds)}")
+        elif args.command == "goal":
+            for line in goal_command(service, args):
+                print(clean(line))
         elif args.command == "profile":
             for line in profile_command(service, args):
                 print(clean(line))

@@ -26,6 +26,8 @@ class DisplaySnapshot:
     page: int = 1
     total_pages: int = 1
     idle: bool = False
+    goal_label: str = ""
+    goal_progress: float | None = None
 
 
 @dataclass(frozen=True)
@@ -122,6 +124,12 @@ def render_frame(snapshot, columns, rows, *, color=True, truecolor=False):
     elif snapshot.phase != "focus":
         cycle = f"{completed} completed | Focus next"
     today = f"TODAY | Focus: {format_duration(snapshot.today_focus_seconds)} | Completed: {snapshot.today_completed}"
+    goal_lines = []
+    if snapshot.goal_progress is not None:
+        goal_fraction = min(1.0, max(0.0, snapshot.goal_progress))
+        goal_filled = int(goal_fraction * 20)
+        goal_lines = ["Goal: " + snapshot.goal_label,
+                      "[" + "#" * goal_filled + "-" * (20 - goal_filled) + f"] {int(goal_fraction * 100)}%"]
     help_text = "Commands: continue, quit, help" if snapshot.waiting else "Commands: pause, resume, stop, help"
     command = "> " + clip_text(snapshot.command, max(0, width - 2), tail=True)
     placements = [[] for _ in range(rows)]
@@ -201,7 +209,7 @@ def render_frame(snapshot, columns, rows, *, color=True, truecolor=False):
             panel(0, 2, main_width, rows - 6, "TIMER", body, centered=True)
             panel(main_width + 2, 2, side_width, 7, "TODAY",
                   [f"Focus: {format_duration(snapshot.today_focus_seconds)}",
-                   f"Completed: {snapshot.today_completed}"], centered=True)
+                   f"Completed: {snapshot.today_completed}", *goal_lines], centered=True)
             panel(main_width + 2, 10, side_width, rows - 14, "UPCOMING TASKS",
                   [f"{index}. {task}" if snapshot.upcoming_tasks else task
                    for index, task in enumerate(upcoming, 1)])
@@ -209,7 +217,10 @@ def render_frame(snapshot, columns, rows, *, color=True, truecolor=False):
         else:
             body = clock_lines(width - 2) + [bar, cycle]
             panel(0, 2, width, 11, "TIMER", body, centered=True)
-            summary = [today.removeprefix("TODAY | ")] + [
+            summary = [today.removeprefix("TODAY | ")]
+            if goal_lines:
+                summary.append(goal_lines[0] + f" ({int(min(1, max(0, snapshot.goal_progress)) * 100)}%)")
+            summary += [
                 "Upcoming: " + task if index == 0 else "          " + task
                 for index, task in enumerate(upcoming)]
             panel(0, 13, width, rows - 16, "TODAY / UPCOMING", summary)
@@ -222,7 +233,7 @@ def render_frame(snapshot, columns, rows, *, color=True, truecolor=False):
         if focus_only and snapshot.waiting:
             content.append("continue / quit")
         elif not focus_only:
-            content.extend([bar, cycle, today, help_text])
+            content.extend([bar, cycle, today, *goal_lines, help_text])
         feedback_rows = int(rows >= 4 and bool(snapshot.feedback))
         for index, text in enumerate(content[:max(0, rows - 1 - feedback_rows)]):
             put(index, text, centered=False, accent=index in (0, 2))
