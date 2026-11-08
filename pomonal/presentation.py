@@ -20,6 +20,7 @@ from .preferences import Preferences
 from .rendering import DisplaySnapshot, clean_text, clip_text, render_frame
 from .workspace import Workspace
 from .tasks import Tasks
+from .profiles import Profiles
 
 
 def positive(value):
@@ -49,6 +50,7 @@ def parser(*, embedded=False):
     selector.add_argument("--task")
     selector.add_argument("--task-id")
     start.add_argument("--minutes", type=positive)
+    start.add_argument("--profile")
     start.add_argument("--plain", action="store_true", help="Use the compact interface without screen controls.")
     ui = commands.add_parser("ui", help="Open the persistent terminal workspace.")
     ui.add_argument("--plain", action="store_true", help="Use a line-oriented workspace.")
@@ -76,6 +78,15 @@ def parser(*, embedded=False):
     rename.add_argument("title")
     for name in ("done", "reopen"):
         task_actions.add_parser(name).add_argument("task_id")
+    profile = commands.add_parser("profile", help="Manage duration profiles.")
+    profile_actions = profile.add_subparsers(dest="action", required=True)
+    profile_actions.add_parser("list")
+    profile_save = profile_actions.add_parser("save")
+    profile_save.add_argument("name")
+    profile_save.add_argument("--work", type=positive, required=True)
+    profile_save.add_argument("--short-break", type=positive, required=True)
+    profile_save.add_argument("--long-break", type=positive, required=True)
+    profile_actions.add_parser("use").add_argument("name")
     return result
 
 
@@ -91,10 +102,25 @@ def duration(seconds):
 
 
 def start_cycle(service, args):
+    durations = Profiles(service).resolve(args.profile)
     if args.task_id is not None:
-        Tasks(service).start(args.task_id, args.minutes)
+        Tasks(service).start(args.task_id, args.minutes, durations=durations)
     else:
-        service.start(args.task, args.minutes)
+        service.start(args.task, args.minutes, durations=durations)
+
+
+def profile_command(service, args):
+    profiles = Profiles(service)
+    if args.action == "list":
+        selected = service.state["preferences"]["profile"]
+        return [f"{'*' if name == selected else ' '} {name}: "
+                f"{values['work_minutes']}/{values['short_break_minutes']}/{values['long_break_minutes']} minutes"
+                for name, values in profiles.list().items()]
+    if args.action == "save":
+        profiles.save(args.name, args.work, args.short_break, args.long_break)
+        return [f"Profile saved: {args.name.strip().casefold()}"]
+    profiles.use(args.name)
+    return [f"Selected profile: {service.state['preferences']['profile']}"]
 
 
 def task_command(service, args):
@@ -157,7 +183,7 @@ class Terminal:
         active = self.service.state["active"]
         session = active["session"] if active else None
         if active is None:
-            phase, remaining, progress = "idle", self.service.state["config"]["work_minutes"] * 60, 0.0
+            phase, remaining, progress = "idle", Profiles(self.service).resolve()["work_minutes"] * 60, 0.0
         elif active["waiting"]:
             history = self.service.state["history"]
             phase = history[-1]["phase"] if history else (
@@ -229,6 +255,12 @@ class Terminal:
             args = parser(embedded=True).parse_args([name, *parts[1:]])
             start_cycle(self.service, args)
             self.workspace.navigate("timer")
+        elif name == "profile":
+            if any(part in ("-h", "--help") for part in parts):
+                raise ValueError("Usage: profile list/save/use")
+            args = parser(embedded=True).parse_args(parts)
+            self.message(profile_command(self.service, args)[0])
+            self.workspace.navigate("settings")
         elif name == "task":
             if any(part in ("-h", "--help") for part in parts):
                 raise ValueError("Usage: task add/list/move/rename/done/reopen")
@@ -356,6 +388,7 @@ class Terminal:
 def run(args, repository):
     writes = args.command in ("start", "ui") or (args.command == "config" and args.action == "set")
     writes = writes or (args.command == "task" and args.action != "list")
+    writes = writes or (args.command == "profile" and args.action != "list")
     if args.command in ("start", "ui"):
         if args.command == "start" and args.task is not None and not args.task.strip():
             raise ValueError("Task must not be empty.")
@@ -391,6 +424,9 @@ def run(args, repository):
             print(f"Total focus time: {duration(report['focus_seconds'])}")
             for task, seconds in sorted(report["tasks"].items()):
                 print(f"  {clean(task)}: {duration(seconds)}")
+        elif args.command == "profile":
+            for line in profile_command(service, args):
+                print(clean(line))
         elif args.command == "task":
             for line in task_command(service, args):
                 print(clean(line))
