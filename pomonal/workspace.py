@@ -15,6 +15,10 @@ class Workspace:
         self.screen = "timer"
         self.offsets = {screen: 0 for screen in self.SCREENS}
         self.completed_tasks = False
+        self.history_filters = {}
+        self.history_limit = None
+        self.stats_filters = {}
+        self.stats_period = "week"
 
     def navigate(self, screen):
         if screen not in self.SCREENS:
@@ -31,9 +35,15 @@ class Workspace:
             return [f"{task['id']} | {'done' if task['completed'] else 'pending'} | {task['title']}"
                     for task in state["tasks"] if task["completed"] == self.completed_tasks] or ["No queued tasks."]
         if self.screen == "history":
-            return [f"{item['task']} | {item['status']} | {format_duration(item['elapsed_seconds'])} | "
-                    f"{item['phase']} | {item['started_at']} | {item['id']}"
-                    for item in reversed(state["history"])] or ["No finalized sessions."]
+            result = []
+            limit = self.history_limit or max(1, len(state["history"]))
+            for item in self.service.history(limit, **self.history_filters):
+                result.extend([f"{item['task']} | {item['status']} | {format_duration(item['elapsed_seconds'])} | {item['started_at'][:16]}", item["id"]])
+                if item["tags"]:
+                    result.append("Tags: " + ", ".join(item["tags"]))
+                if item["note"]:
+                    result.append("Note: " + item["note"])
+            return result or ["No finalized sessions."]
         if self.screen == "settings":
             return [f"{key} = {value}" for key, value in state["config"].items()] + [
                 f"view = {state['preferences']['view']}",
@@ -45,8 +55,8 @@ class Workspace:
             ] + [f"{name}: {values['work_minutes']}/{values['short_break_minutes']}/{values['long_break_minutes']}"
                  for name, values in Profiles(self.service).list().items()]
         if self.screen == "stats":
-            today = self.service.statistics("today")
-            week = self.service.statistics("week")
+            today = self.service.statistics("today", **self.stats_filters)
+            week = self.service.statistics(self.stats_period, **self.stats_filters)
             goal = Goals(self.service).progress()
             return [
                 f"Today: {today['start_date']}",

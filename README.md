@@ -121,6 +121,21 @@ Use the full ID printed by `task add` or `task list`. The same task commands wor
 
 ## History and statistics
 
+History prints full session IDs for use with annotations. In the workspace, each ID appears on a separate line below its record summary, so it remains readable in narrower terminals.
+
+```bash
+python3 -m pomonal start --task "Read" --tags algorithms reading
+python3 -m pomonal session note SESSION_ID "Finished chapter three"
+python3 -m pomonal session tags SESSION_ID algorithms reading
+python3 -m pomonal session tags SESSION_ID
+python3 -m pomonal history --tag reading --from-date 2026-11-01 --to-date 2026-11-08
+python3 -m pomonal stats --week --task-id TASK_ID --tag reading
+```
+
+Notes and tags apply to finalized sessions only. An empty note or empty tag list clears that field. Tags are trimmed, case-normalized, and deduplicated. Cycle tags are copied onto focus sessions; breaks remain untagged. Editing a past session does not alter future focus tags. Notes preserve Unicode and line breaks in saved data; terminal output cleans control characters.
+
+History and statistics accept `--task-id`, `--tag`, `--from-date`, and `--to-date` filters. Supplied filters combine with AND; dates are inclusive local start dates in YYYY-MM-DD format. These filtered commands and annotation commands also work inside `ui`. Bare `history` or `stats` resets that screen's filters. Daily goal progress always uses the full local day rather than a filtered report.
+
 History shows the newest finalized sessions first, including breaks and completed, cancelled, or interrupted work. Active sessions are excluded.
 
 Daily statistics use the current local calendar day. Weekly statistics use Monday through Sunday of the current local calendar week. They show completed focus count, total focus time, and time by task. Cancelled and interrupted focus sessions contribute their recorded active time, but do not increase completed count. Breaks and paused time never contribute. A session crossing midnight belongs entirely to its local start date. Displayed durations round up to the next second; stored durations retain fractional seconds.

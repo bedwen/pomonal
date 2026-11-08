@@ -22,6 +22,7 @@ from .workspace import Workspace
 from .tasks import Tasks
 from .profiles import Profiles
 from .goals import Goals
+from .annotations import Annotations
 
 
 def positive(value):
@@ -42,6 +43,20 @@ class EmbeddedParser(argparse.ArgumentParser):
         raise ValueError(message or "Use help for available workspace commands.")
 
 
+def add_filters(command):
+    command.add_argument("--task-id", dest="filter_task_id")
+    command.add_argument("--tag")
+    command.add_argument("--from-date", dest="start_date")
+    command.add_argument("--to-date", dest="end_date")
+
+
+def filters_from(args):
+    return {"task_id": getattr(args, "filter_task_id", None),
+            "tag": getattr(args, "tag", None),
+            "start_date": getattr(args, "start_date", None),
+            "end_date": getattr(args, "end_date", None)}
+
+
 def parser(*, embedded=False):
     parser_type = EmbeddedParser if embedded else argparse.ArgumentParser
     result = parser_type(prog="python3 -m pomonal", description="Local terminal Pomodoro timer.")
@@ -52,15 +67,18 @@ def parser(*, embedded=False):
     selector.add_argument("--task-id")
     start.add_argument("--minutes", type=positive)
     start.add_argument("--profile")
+    start.add_argument("--tags", nargs="*")
     start.add_argument("--plain", action="store_true", help="Use the compact interface without screen controls.")
     ui = commands.add_parser("ui", help="Open the persistent terminal workspace.")
     ui.add_argument("--plain", action="store_true", help="Use a line-oriented workspace.")
     history = commands.add_parser("history", help="Show finalized sessions.")
     history.add_argument("--limit", type=positive, default=20)
+    add_filters(history)
     stats = commands.add_parser("stats", help="Show focus statistics.")
     period = stats.add_mutually_exclusive_group()
     period.add_argument("--today", action="store_true")
     period.add_argument("--week", action="store_true")
+    add_filters(stats)
     config = commands.add_parser("config", help="Inspect or change durations.")
     actions = config.add_subparsers(dest="action", required=True)
     actions.add_parser("show")
@@ -95,6 +113,14 @@ def parser(*, embedded=False):
     target.add_argument("--minutes", type=positive)
     goal_actions.add_parser("clear")
     goal_actions.add_parser("show")
+    session = commands.add_parser("session", help="Annotate finalized sessions.")
+    session_actions = session.add_subparsers(dest="action", required=True)
+    note = session_actions.add_parser("note")
+    note.add_argument("session_id")
+    note.add_argument("text")
+    tags = session_actions.add_parser("tags")
+    tags.add_argument("session_id")
+    tags.add_argument("tags", nargs="*")
     return result
 
 
@@ -112,9 +138,18 @@ def duration(seconds):
 def start_cycle(service, args):
     durations = Profiles(service).resolve(args.profile)
     if args.task_id is not None:
-        Tasks(service).start(args.task_id, args.minutes, durations=durations)
+        Tasks(service).start(args.task_id, args.minutes, durations=durations, tags=args.tags)
     else:
-        service.start(args.task, args.minutes, durations=durations)
+        service.start(args.task, args.minutes, durations=durations, tags=args.tags)
+
+
+def session_command(service, args):
+    annotations = Annotations(service)
+    if args.action == "note":
+        annotations.note(args.session_id, args.text)
+    else:
+        annotations.tags(args.session_id, args.tags)
+    return f"Updated session {args.session_id}"
 
 
 def profile_command(service, args):
@@ -271,7 +306,35 @@ class Terminal:
             self.preferences.set_view(parts[1].lower())
             self.message(f"View: {self.preferences.view}")
         elif name in Workspace.SCREENS and len(parts) == 1:
+            if name == "history":
+                self.workspace.history_filters = {}
+                self.workspace.history_limit = None
+            elif name == "stats":
+                self.workspace.stats_filters = {}
+                self.workspace.stats_period = "week"
             self.workspace.navigate(name)
+        elif name in ("history", "stats"):
+            if any(part in ("-h", "--help") for part in parts):
+                raise ValueError("Filters: --task-id ID --tag TAG --from-date YYYY-MM-DD --to-date YYYY-MM-DD")
+            args = parser(embedded=True).parse_args(parts)
+            filters = filters_from(args)
+            if name == "history":
+                self.service.history(args.limit, **filters)
+                self.workspace.history_filters = filters
+                self.workspace.history_limit = args.limit if any(part == "--limit" or part.startswith("--limit=") for part in parts) else None
+            else:
+                period = "week" if args.week else "today"
+                self.service.statistics(period, **filters)
+                self.workspace.stats_filters = filters
+                self.workspace.stats_period = period
+            self.workspace.offsets[name] = 0
+            self.workspace.navigate(name)
+        elif name == "session":
+            if any(part in ("-h", "--help") for part in parts):
+                raise ValueError('Usage: session note ID "Text" | session tags ID [TAGS]')
+            args = parser(embedded=True).parse_args(parts)
+            self.message(session_command(self.service, args))
+            self.workspace.navigate("history")
         elif name in ("next", "prev") and len(parts) == 1:
             self.workspace.page(1 if name == "next" else -1, self.dimensions()[1])
         elif name == "start":
@@ -420,6 +483,7 @@ def run(args, repository):
     writes = writes or (args.command == "task" and args.action != "list")
     writes = writes or (args.command == "profile" and args.action != "list")
     writes = writes or (args.command == "goal" and args.action != "show")
+    writes = writes or args.command == "session"
     if args.command in ("start", "ui"):
         if args.command == "start" and args.task is not None and not args.task.strip():
             raise ValueError("Task must not be empty.")
@@ -442,14 +506,18 @@ def run(args, repository):
                 start_cycle(service, args)
             Terminal(service, plain=args.plain, keep_open=keep_open).run()
         elif args.command == "history":
-            records = service.history(args.limit)
+            records = service.history(args.limit, **filters_from(args))
             if not records:
                 print("No finalized sessions.")
             for item in records:
-                print(f"{item['started_at']} | {item['phase']} | {item['status']} | "
+                print(f"{clean(item['id'])} | {clean(item['started_at'])} | {item['phase']} | {item['status']} | "
                       f"{duration(item['elapsed_seconds'])} | {clean(item['task'])}")
+                if item["tags"]:
+                    print("  Tags: " + clean(", ".join(item["tags"])))
+                if item["note"]:
+                    print("  Note: " + clean(item["note"]))
         elif args.command == "stats":
-            report = service.statistics("week" if args.week else "today")
+            report = service.statistics("week" if args.week else "today", **filters_from(args))
             print(f"{report['start_date']} to {report['end_date']}")
             print(f"Completed focus sessions: {report['completed_sessions']}")
             print(f"Total focus time: {duration(report['focus_seconds'])}")
@@ -461,6 +529,8 @@ def run(args, repository):
                 blue = "\033[38;2;96;165;250m" if os.environ.get("COLORTERM", "").lower() in ("truecolor", "24bit") else "\033[94m"
                 for line in daily_bars(report["days"], max(1, columns - 1)):
                     print((blue + line + "\033[0m") if colored else line)
+        elif args.command == "session":
+            print(clean(session_command(service, args)))
         elif args.command == "goal":
             for line in goal_command(service, args):
                 print(clean(line))
