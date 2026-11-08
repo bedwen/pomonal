@@ -1,9 +1,10 @@
 """Use cases, isolated from storage and terminal implementation details."""
 
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
 from typing import Protocol
 
 from .domain import CONFIG_KEYS, new_session, next_phase, positive_integer
+from .reports import Reports
 
 
 class Clock(Protocol):
@@ -193,28 +194,5 @@ class Service:
             raise ValueError("History limit must be a positive integer.")
         return list(reversed(self.state["history"][-limit:]))
 
-    def statistics(self, period: str = "today") -> dict:
-        if period not in ("today", "week"):
-            raise ValueError("Statistics period must be today or week.")
-        now = self.clock.now()
-        today = now.date()
-        first = today if period == "today" else today - timedelta(days=today.weekday())
-        last = today if period == "today" else first + timedelta(days=6)
-        result = {
-            "period": period,
-            "start_date": first.isoformat(),
-            "end_date": last.isoformat(),
-            "completed_sessions": 0,
-            "focus_seconds": 0.0,
-            "tasks": {},
-        }
-        for session in self.state["history"]:
-            day = self.clock.local_date(datetime.fromisoformat(session["started_at"]))
-            if session["phase"] != "focus" or not first <= day <= last:
-                continue
-            result["completed_sessions"] += session["status"] == "completed"
-            elapsed = session["elapsed_seconds"]
-            result["focus_seconds"] += elapsed
-            task = session["task"]
-            result["tasks"][task] = result["tasks"].get(task, 0.0) + elapsed
-        return result
+    def statistics(self, period: str = "today", **filters) -> dict:
+        return Reports(self.state, self.clock).statistics(period, **filters)

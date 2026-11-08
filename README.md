@@ -125,6 +125,8 @@ History shows the newest finalized sessions first, including breaks and complete
 
 Daily statistics use the current local calendar day. Weekly statistics use Monday through Sunday of the current local calendar week. They show completed focus count, total focus time, and time by task. Cancelled and interrupted focus sessions contribute their recorded active time, but do not increase completed count. Breaks and paused time never contribute. A session crossing midnight belongs entirely to its local start date. Displayed durations round up to the next second; stored durations retain fractional seconds.
 
+`stats --week` and the workspace stats screen include seven daily bars, including zero-activity days. Bars share the week's largest daily value as their scale and retain numeric durations. Interactive bars are blue; redirected output and `NO_COLOR` remain plain text. Use `next`/`prev` to page the workspace summary when space is limited.
+
 ## Local data and safety
 
 All runtime data is stored in `data/state.json` beneath the project root. This versioned JSON document contains configuration, finalized history, and the active cycle. Data and test artifacts are ignored by Git.

@@ -1,6 +1,7 @@
 """Pure, terminal-cell-aware layouts for the Pomonal focus screen."""
 
 from dataclasses import dataclass
+from datetime import date
 import math
 import unicodedata
 
@@ -77,6 +78,26 @@ def clip_text(value, width, *, tail=False):
 def format_duration(seconds):
     minutes, seconds = divmod(max(0, math.ceil(seconds)), 60)
     return f"{minutes:02d}:{seconds:02d}"
+
+
+DAY_NAMES = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
+
+
+def daily_bars(days, columns=80):
+    """Build unstyled weekly bars with durations and a zero-safe common scale."""
+    maximum = max((item["focus_seconds"] for item in days), default=0)
+    result = []
+    for item in days:
+        day = date.fromisoformat(item["date"])
+        prefix = f"{DAY_NAMES[day.weekday()]} {day:%m-%d} "
+        suffix = " " + format_duration(item["focus_seconds"])
+        available = max(0, columns - cell_width(prefix + suffix) - 2)
+        count = int(item["focus_seconds"] / maximum * available) if maximum > 0 else 0
+        if item["focus_seconds"] > 0 and available:
+            count = max(1, count)
+        line = prefix + "[" + "#" * count + "-" * (available - count) + "]" + suffix
+        result.append(clip_text(line, max(0, columns)))
+    return tuple(result)
 
 
 GLYPHS = {
@@ -160,7 +181,7 @@ def render_frame(snapshot, columns, rows, *, color=True, truecolor=False):
         offset = max(0, (usable - len(content)) // 2) if centered else 0
         for index, text in enumerate(content):
             put(y + 1 + offset + index, text, centered=centered,
-                accent=("#" in text or text == time_text), x=x + 1, area=inner)
+                accent=("#" in text or text == time_text or text[:3] in DAY_NAMES), x=x + 1, area=inner)
 
     def clock_lines(area, *, spacious=False):
         scale = 2 if layout == "large" else 1
@@ -190,7 +211,7 @@ def render_frame(snapshot, columns, rows, *, color=True, truecolor=False):
                 put(1, f"{snapshot.screen.upper()} {snapshot.page}/{snapshot.total_pages}", centered=False)
             available = max(0, rows - 4)
             for index, text in enumerate(snapshot.content_lines[:available]):
-                put(index + 2, text, centered=False)
+                put(index + 2, text, centered=False, accent=text[:3] in DAY_NAMES)
             if rows >= 4:
                 put(rows - 2, snapshot.feedback, centered=False)
         put(rows - 1, command, centered=False)
@@ -260,7 +281,8 @@ def render_frame(snapshot, columns, rows, *, color=True, truecolor=False):
     for index, line in enumerate(lines):
         output.append(f"\033[{index + 1};1H\033[2K")
         if code and index in accent_rows:
-            output.extend((code, line, "\033[0m"))
+            line_code = ("\033[38;2;96;165;250m" if truecolor else "\033[94m") if snapshot.screen == "stats" and "[" in line else code
+            output.extend((line_code, line, "\033[0m"))
         else:
             output.append(line)
     cursor_column = min(columns, cell_width(lines[-1]) + 1)

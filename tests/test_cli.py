@@ -316,5 +316,21 @@ class CliTests(unittest.TestCase):
         self.assertNotEqual(self.cli("goal", "set", "--sessions", "2", "--minutes", "10").returncode, 0)
 
 
+    def test_weekly_chart_redirect_and_workspace(self):
+        output = self.cli("stats", "--week")
+        self.assertEqual(output.returncode, 0, output.stderr)
+        self.assertNotIn("\033", output.stdout)
+        for day in ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"):
+            self.assertIn(day + " ", output.stdout)
+        process, master = self.terminal("ui", size=(100, 28))
+        self.wait_text(master, "IDLE")
+        os.write(master, b"stats\n")
+        output = self.wait_text(master, "Weekly focus by day")
+        self.assertIn("\033[94m", output)
+        self.assertIn("Mon ", output)
+        os.write(master, b"exit\n")
+        self.assertEqual(process.wait(timeout=5), 0)
+
+
 if __name__ == "__main__":
     unittest.main()

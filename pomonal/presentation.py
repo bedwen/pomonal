@@ -17,7 +17,7 @@ from .application import Service
 from .domain import positive_integer
 from .infrastructure import JsonRepository, SystemClock
 from .preferences import Preferences
-from .rendering import DisplaySnapshot, clean_text, clip_text, render_frame
+from .rendering import DisplaySnapshot, clean_text, clip_text, daily_bars, render_frame
 from .workspace import Workspace
 from .tasks import Tasks
 from .profiles import Profiles
@@ -219,7 +219,8 @@ class Terminal:
             upcoming = "long_break" if (active["completed_focus"] + 1) % 4 == 0 else "short_break"
         else:
             upcoming = "focus"
-        content, page, total_pages = self.workspace.content(self.dimensions()[1])
+        columns, rows = self.dimensions()
+        content, page, total_pages = self.workspace.content(rows, columns)
         goal = Goals(self.service).progress()
         return DisplaySnapshot(
             task=active["task"] if active else "No active task", phase=phase, remaining_seconds=remaining,
@@ -454,6 +455,12 @@ def run(args, repository):
             print(f"Total focus time: {duration(report['focus_seconds'])}")
             for task, seconds in sorted(report["tasks"].items()):
                 print(f"  {clean(task)}: {duration(seconds)}")
+            if args.week:
+                columns = Terminal.dimensions()[0]
+                colored = sys.stdout.isatty() and "NO_COLOR" not in os.environ and os.environ.get("TERM", "").lower() not in ("", "dumb")
+                blue = "\033[38;2;96;165;250m" if os.environ.get("COLORTERM", "").lower() in ("truecolor", "24bit") else "\033[94m"
+                for line in daily_bars(report["days"], max(1, columns - 1)):
+                    print((blue + line + "\033[0m") if colored else line)
         elif args.command == "goal":
             for line in goal_command(service, args):
                 print(clean(line))

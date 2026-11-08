@@ -4,7 +4,7 @@ from dataclasses import replace
 import re
 import unittest
 
-from pomonal.rendering import DisplaySnapshot, cell_width, clean_text, clip_text, render_frame
+from pomonal.rendering import DisplaySnapshot, cell_width, clean_text, clip_text, daily_bars, render_frame
 
 
 class RenderingTests(unittest.TestCase):
@@ -200,6 +200,23 @@ class RenderingTests(unittest.TestCase):
             self.assertNotIn("200%", text)
         text = "\n".join(render_frame(replace(snapshot, view="focus"), 100, 28).lines)
         self.assertNotIn("13/6", text)
+
+
+    def test_weekly_bars_scale_zero_days_and_keep_numeric_durations(self):
+        days = [{"date": f"2026-11-{day:02d}", "focus_seconds": seconds}
+                for day, seconds in zip(range(2, 9), (0, 60, 120, 60, 0, 0, 0))]
+        for columns in (40, 64, 100):
+            bars = daily_bars(days, columns)
+            self.assertEqual(len(bars), 7)
+            self.assertTrue(all(cell_width(line) <= columns for line in bars))
+            self.assertTrue(bars[0].endswith("00:00"))
+            self.assertTrue(bars[2].endswith("02:00"))
+            self.assertGreater(bars[2].count("#"), bars[1].count("#"))
+        empty = daily_bars([{**day, "focus_seconds": 0} for day in days], 64)
+        self.assertTrue(all("#" not in line for line in empty))
+        snapshot = replace(self.snapshot, screen="stats", phase="short_break", content_lines=empty)
+        self.assertIn("\033[94m", render_frame(snapshot, 100, 28).text)
+        self.assertNotRegex(render_frame(snapshot, 100, 28, color=False).text, r"\x1b\[[\d;]*m")
 
 
 if __name__ == "__main__":
