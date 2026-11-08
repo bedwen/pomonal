@@ -79,8 +79,8 @@ class Tasks:
         self.timer.save_changes()
         return task
 
-    def start(self, task_id, minutes=None, *, durations=None):
+    def start(self, task_id, minutes=None, *, durations=None, tags=None):
         task = self._task(task_id)
         if task["completed"]:
             raise ValueError("Reopen this task before starting it.")
-        self.timer.start(task["title"], minutes, task_id=task["id"], durations=durations)
+        self.timer.start(task["title"], minutes, task_id=task["id"], durations=durations, tags=tags)

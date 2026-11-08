@@ -39,11 +39,11 @@ class WorkspaceTests(unittest.TestCase):
         self.assertFalse(self.service.state["active"]["paused"])
         self.assertEqual(self.service.state["active"]["session"]["elapsed_seconds"], 10)
         first, page, total = self.workspace.content(20)
-        self.assertIn("Task 27", first[0])
-        self.assertEqual((page, total), (2, 4))
+        self.assertIn("Task 33", first[0])
+        self.assertEqual((page, total), (2, 7))
         self.workspace.navigate("stats")
         self.workspace.navigate("history")
-        self.assertIn("Task 27", self.workspace.content(28)[0][0])
+        self.assertIn("Task 33", self.workspace.content(28)[0][0])
         self.assertEqual(self.workspace.offsets["history"], 12)
 
     def test_paging_clamps_and_empty_screens_are_readable(self):
@@ -54,8 +54,9 @@ class WorkspaceTests(unittest.TestCase):
         self.seed_history(20)
         for _ in range(10):
             self.workspace.page(1, 20)
-        self.assertEqual(self.workspace.offsets["history"], 12)
-        self.workspace.page(-1, 20)
+        self.assertEqual(self.workspace.offsets["history"], 36)
+        for _ in range(10):
+            self.workspace.page(-1, 20)
         self.assertEqual(self.workspace.offsets["history"], 0)
         with self.assertRaises(ValueError):
             self.workspace.navigate("unknown")
@@ -77,6 +78,16 @@ class WorkspaceTests(unittest.TestCase):
             self.assertEqual(terminal.workspace.screen, "settings")
             terminal.dispatch("quit")
             self.assertEqual(terminal.exit_message, "Workspace closed.")
+
+    def test_embedded_history_limit_accepts_equals_syntax(self):
+        self.seed_history(3)
+        terminal = Terminal(self.service, plain=True, keep_open=True)
+        with patch("builtins.print"):
+            terminal.dispatch("history --limit=1")
+        self.assertEqual(terminal.workspace.history_limit, 1)
+        entries = terminal.workspace.content(28)[0]
+        self.assertEqual(len(entries), 2)
+        self.assertIn("Task 2", entries[0])
 
 
 class UiTests(unittest.TestCase):
@@ -183,11 +194,11 @@ class UiTests(unittest.TestCase):
         os.write(master, b"history\n")
         self.wait_text(master, "HISTORY")
         os.write(master, b"next\n")
-        self.wait_text(master, "Page 2/3")
+        self.wait_text(master, "Page 2/5")
         os.write(master, b"settings\n")
         self.wait_text(master, "SETTINGS")
         os.write(master, b"history\n")
-        self.wait_text(master, "Page 2/3")
+        self.wait_text(master, "Page 2/5")
         os.write(master, b"quit\n")
         self.assertEqual(process.wait(timeout=5), 0)
 

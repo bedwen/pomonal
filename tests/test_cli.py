@@ -197,7 +197,7 @@ class CliTests(unittest.TestCase):
                 environment["TERM"] = term
             extra = ("--plain",) if explicit else ()
             process, master = self.terminal("start", "--task", "Plain", *extra, environment=environment)
-            output = self.wait_text(master, "25:00")
+            output = self.wait_text(master, "completed | Plain")
             self.assertNotIn("\033", output)
             os.write(master, b"stop\n")
             output = self.wait_text(master, "Cycle stopped.")
@@ -330,6 +330,58 @@ class CliTests(unittest.TestCase):
         self.assertIn("Mon ", output)
         os.write(master, b"exit\n")
         self.assertEqual(process.wait(timeout=5), 0)
+
+
+    def test_session_annotations_filters_and_visible_history_ids(self):
+        process, master = self.terminal("ui", size=(64, 20))
+        self.wait_text(master, "IDLE")
+        os.write(master, b'start --task "Tagged Reading" --minutes 1 --tags READING reading\n')
+        self.wait_text(master, "FOCUS")
+        os.write(master, b"stop\n")
+        self.wait_text(master, "Ready for another task")
+        path = self.root / "data" / "state.json"
+        record = json.loads(path.read_text())["history"][0]
+        session_id = record["id"]
+        self.assertEqual(record["tags"], ["reading"])
+        os.write(master, b"history\n")
+        output = self.wait_text(master, session_id)
+        self.assertIn(session_id, output)
+        os.write(master, f'session note {session_id} "Finished chapter"\n'.encode())
+        self.wait_text(master, "Updated session")
+        os.write(master, f"session tags {session_id} Algorithms algorithms\n".encode())
+        self.wait_text(master, "Tags: algorithms")
+        os.write(master, b"history --tag missing\n")
+        self.wait_text(master, "No finalized sessions")
+        os.write(master, b"exit\n")
+        self.assertEqual(process.wait(timeout=5), 0)
+        note = 'Finished "chapter", 日本語\nNext steps'
+        self.assertEqual(self.cli("session", "note", session_id, note).returncode, 0)
+        date_text = record["started_at"][:10]
+        history = self.cli("history", "--tag", "ALGORITHMS", "--from-date", date_text, "--to-date", date_text)
+        self.assertEqual(history.returncode, 0, history.stderr)
+        self.assertIn(session_id, history.stdout)
+        self.assertIn("日本語", history.stdout)
+        self.assertIn("Finished", json.loads(path.read_text())["history"][0]["note"])
+        self.assertIn("No finalized", self.cli("history", "--tag", "missing").stdout)
+        self.assertEqual(self.cli("session", "tags", session_id).returncode, 0)
+        self.assertIn("No finalized", self.cli("history", "--tag", "algorithms").stdout)
+        self.assertNotEqual(self.cli("history", "--from-date", "bad-date").returncode, 0)
+
+
+    def test_history_cleans_valid_control_separator_in_saved_timestamp(self):
+        from pomonal.domain import new_session
+        repository = JsonRepository(self.root)
+        state = repository.load()
+        now = SystemClock().now()
+        record = new_session("Safe display", "focus", 1, now)
+        record.update(status="completed", elapsed_seconds=60, ended_at=now.isoformat())
+        record["started_at"] = record["started_at"].replace("T", "\033", 1)
+        state["history"].append(record)
+        repository.save(state)
+        result = self.cli("history")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertNotIn("\033", result.stdout)
+        self.assertIn("Safe display", result.stdout)
 
 
 if __name__ == "__main__":

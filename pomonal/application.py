@@ -5,6 +5,7 @@ from typing import Protocol
 
 from .domain import CONFIG_KEYS, new_session, next_phase, positive_integer
 from .reports import Reports
+from .annotations import normalize_tags
 
 
 class Clock(Protocol):
@@ -45,7 +46,7 @@ class Service:
         return active
 
     def start(self, task: str, minutes: int | None = None, *, task_id: str | None = None,
-              durations: dict | None = None) -> None:
+              durations: dict | None = None, tags: list | tuple | None = None) -> None:
         if not isinstance(task, str) or not task.strip():
             raise ValueError("A nonempty task name is required.")
         if minutes is not None and not positive_integer(minutes):
@@ -61,6 +62,7 @@ class Service:
         if not isinstance(source, dict) or not all(positive_integer(source.get(key)) for key in CONFIG_KEYS):
             raise ValueError("Cycle durations must contain positive finite integer minutes.")
         durations = {key: source[key] for key in CONFIG_KEYS}
+        tags = normalize_tags([] if tags is None else tags)
         duration = minutes if minutes is not None else durations["work_minutes"]
         durations["work_minutes"] = duration
         self.state["active"] = {
@@ -68,7 +70,7 @@ class Service:
             "work_minutes": duration,
             "durations": durations,
             "task_id": task_id,
-            "tags": [],
+            "tags": list(tags),
             "completed_focus": 0,
             "waiting": False,
             "next_phase": None,
@@ -76,6 +78,7 @@ class Service:
             "session": new_session(task.strip(), "focus", duration, self.clock.now()),
         }
         self.state["active"]["session"]["task_id"] = task_id
+        self.state["active"]["session"]["tags"] = list(tags)
         self.has_recovery = False
         self._anchor = self.clock.monotonic()
         self._save()
@@ -161,6 +164,7 @@ class Service:
         )
         active["session"] = new_session(active["task"], phase, minutes, self.clock.now())
         active["session"]["task_id"] = active["task_id"]
+        active["session"]["tags"] = list(active["tags"]) if phase == "focus" else []
         active["waiting"] = False
         active["paused"] = False
         active["next_phase"] = None
@@ -189,10 +193,10 @@ class Service:
         self.state["config"][key] = value
         self._save()
 
-    def history(self, limit: int = 20) -> list[dict]:
+    def history(self, limit: int = 20, **filters) -> list[dict]:
         if not positive_integer(limit):
             raise ValueError("History limit must be a positive integer.")
-        return list(reversed(self.state["history"][-limit:]))
+        return list(reversed(Reports(self.state, self.clock).query(**filters)[-limit:]))
 
     def statistics(self, period: str = "today", **filters) -> dict:
         return Reports(self.state, self.clock).statistics(period, **filters)
