@@ -18,6 +18,7 @@
 !/pomonal/tasks.py
 !/pomonal/profiles.py
 !/pomonal/goals.py
+!/pomonal/reports.py
 
 !/tests/
 !/tests/test_cli.py
@@ -30,3 +31,4 @@
 !/tests/test_tasks.py
 !/tests/test_profiles.py
 !/tests/test_goals.py
+!/tests/test_reports.py

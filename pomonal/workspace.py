@@ -2,7 +2,7 @@
 
 from math import ceil
 
-from .rendering import format_duration
+from .rendering import daily_bars, format_duration
 from .profiles import Profiles
 from .goals import Goals
 
@@ -25,7 +25,7 @@ class Workspace:
     def capacity(rows):
         return max(1, rows - 8)
 
-    def _entries(self):
+    def _entries(self, columns=80):
         state = self.service.state
         if self.screen == "tasks":
             return [f"{task['id']} | {'done' if task['completed'] else 'pending'} | {task['title']}"
@@ -55,7 +55,7 @@ class Workspace:
                 f"Week: {week['start_date']} to {week['end_date']}",
                 f"Weekly completed sessions: {week['completed_sessions']}",
                 f"Weekly focus time: {format_duration(week['focus_seconds'])}",
-            ] + ([f"Daily goal: {goal['achieved']:g}/{goal['target']} {goal['type']}"] if goal else []) + [f"{task}: {format_duration(seconds)}" for task, seconds in sorted(week["tasks"].items())]
+            ] + ["Weekly focus by day:", *daily_bars(week["days"], max(1, columns - 3))] + ([f"Daily goal: {goal['achieved']:g}/{goal['target']} {goal['type']}"] if goal else []) + [f"{task}: {format_duration(seconds)}" for task, seconds in sorted(week["tasks"].items())]
         return []
 
     def page(self, delta, rows):
@@ -65,8 +65,8 @@ class Workspace:
         last_page = max(0, (len(entries) - 1) // capacity * capacity)
         self.offsets[self.screen] = min(max(0, offset), last_page)
 
-    def content(self, rows):
-        entries = self._entries()
+    def content(self, rows, columns=80):
+        entries = self._entries(columns)
         capacity = self.capacity(rows)
         offset = min(self.offsets[self.screen], max(0, len(entries) - 1))
         self.offsets[self.screen] = offset
