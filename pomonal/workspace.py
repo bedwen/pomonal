@@ -45,10 +45,12 @@ class Workspace:
                     result.append("Note: " + item["note"])
             return result or ["No finalized sessions."]
         if self.screen == "settings":
+            goal = state["goal"]
+            goal_text = "disabled" if goal is None else f"{goal['target']} {goal['type']} per day"
             return [f"{key} = {value}" for key, value in state["config"].items()] + [
                 f"view = {state['preferences']['view']}",
                 f"profile = {state['preferences']['profile']}",
-                f"Daily goal: {state['goal'] or 'disabled'}",
+                f"Daily goal: {goal_text}",
                 'Change durations: config set work_minutes 30',
                 'Change view: view dashboard / view focus',
                 'Profiles: profile list / profile use NAME',
@@ -58,14 +60,16 @@ class Workspace:
             today = self.service.statistics("today", **self.stats_filters)
             week = self.service.statistics(self.stats_period, **self.stats_filters)
             goal = Goals(self.service).progress()
+            period_label = "Weekly" if self.stats_period == "week" else "Daily"
+            range_label = "Week" if self.stats_period == "week" else "Day"
             return [
                 f"Today: {today['start_date']}",
                 f"Completed focus sessions: {today['completed_sessions']}",
                 f"Total focus time: {format_duration(today['focus_seconds'])}",
-                f"Week: {week['start_date']} to {week['end_date']}",
-                f"Weekly completed sessions: {week['completed_sessions']}",
-                f"Weekly focus time: {format_duration(week['focus_seconds'])}",
-            ] + ["Weekly focus by day:", *daily_bars(week["days"], max(1, columns - 3))] + ([f"Daily goal: {goal['achieved']:g}/{goal['target']} {goal['type']}"] if goal else []) + [f"{task}: {format_duration(seconds)}" for task, seconds in sorted(week["tasks"].items())]
+                f"{range_label}: {week['start_date']} to {week['end_date']}",
+                f"{period_label} completed sessions: {week['completed_sessions']}",
+                f"{period_label} focus time: {format_duration(week['focus_seconds'])}",
+            ] + [f"{period_label} focus by day:", *daily_bars(week["days"], max(1, columns - 3))] + ([f"Daily goal: {goal['achieved']:g}/{goal['target']} {goal['type']}"] if goal else []) + [f"{task}: {format_duration(seconds)}" for task, seconds in sorted(week["tasks"].items())]
         return []
 
     def page(self, delta, rows):

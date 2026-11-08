@@ -89,6 +89,20 @@ class WorkspaceTests(unittest.TestCase):
         self.assertEqual(len(entries), 2)
         self.assertIn("Task 2", entries[0])
 
+    def test_selected_day_statistics_use_daily_labels(self):
+        self.seed_history(1)
+        terminal = Terminal(self.service, plain=True, keep_open=True)
+        with patch("builtins.print"):
+            terminal.dispatch("stats --today")
+        lines = terminal.workspace.content(40)[0]
+        text = "\n".join(lines)
+        self.assertIn("Daily completed sessions: 1", text)
+        self.assertIn("Daily focus by day:", text)
+        self.assertNotIn("Weekly", text)
+        with patch("builtins.print"):
+            terminal.dispatch("stats --week")
+        self.assertIn("Weekly completed sessions", "\n".join(terminal.workspace.content(40)[0]))
+
 
 class UiTests(unittest.TestCase):
     setUp = test_cli.CliTests.setUp
