@@ -254,5 +254,31 @@ class CliTests(unittest.TestCase):
         self.assertEqual(process.wait(timeout=5), 0)
 
 
+    def test_saved_task_cli_and_workspace_start(self):
+        added = self.cli("task", "add", "Queued Reading")
+        self.assertEqual(added.returncode, 0, added.stderr)
+        path = self.root / "data" / "state.json"
+        task_id = json.loads(path.read_text())["tasks"][0]["id"]
+        self.assertIn(task_id, self.cli("task", "list").stdout)
+        self.assertEqual(self.cli("task", "rename", task_id, "Focused Reading").returncode, 0)
+        process, master = self.terminal("ui")
+        self.wait_text(master, "IDLE")
+        os.write(master, f"start --task-id {task_id} --minutes 1\n".encode())
+        self.wait_text(master, "01:00")
+        os.write(master, b"stop\n")
+        self.wait_text(master, "Ready for another task")
+        os.write(master, f"task done {task_id}\n".encode())
+        self.wait_text(master, "Task updated")
+        os.write(master, b"exit\n")
+        self.assertEqual(process.wait(timeout=5), 0)
+        self.assertIn("Focused Reading", self.cli("task", "list", "--completed").stdout)
+        state = json.loads(path.read_text())
+        self.assertEqual(state["history"][0]["task_id"], task_id)
+        self.assertEqual(state["history"][0]["task"], "Focused Reading")
+        self.assertEqual(self.cli("task", "reopen", task_id).returncode, 0)
+        self.assertIn(task_id, self.cli("task", "list").stdout)
+        self.assertNotEqual(self.cli("task", "move", task_id, "--position", "2").returncode, 0)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -19,6 +19,7 @@ from .infrastructure import JsonRepository, SystemClock
 from .preferences import Preferences
 from .rendering import DisplaySnapshot, clean_text, clip_text, render_frame
 from .workspace import Workspace
+from .tasks import Tasks
 
 
 def positive(value):
@@ -44,7 +45,9 @@ def parser(*, embedded=False):
     result = parser_type(prog="python3 -m pomonal", description="Local terminal Pomodoro timer.")
     commands = result.add_subparsers(dest="command", required=True)
     start = commands.add_parser("start", help="Start or recover a focus cycle.")
-    start.add_argument("--task", required=True)
+    selector = start.add_mutually_exclusive_group(required=True)
+    selector.add_argument("--task")
+    selector.add_argument("--task-id")
     start.add_argument("--minutes", type=positive)
     start.add_argument("--plain", action="store_true", help="Use the compact interface without screen controls.")
     ui = commands.add_parser("ui", help="Open the persistent terminal workspace.")
@@ -61,6 +64,18 @@ def parser(*, embedded=False):
     change = actions.add_parser("set")
     change.add_argument("key", choices=("work_minutes", "short_break_minutes", "long_break_minutes"))
     change.add_argument("value", type=positive)
+    task = commands.add_parser("task", help="Manage the saved task queue.")
+    task_actions = task.add_subparsers(dest="action", required=True)
+    task_actions.add_parser("add").add_argument("title")
+    task_actions.add_parser("list").add_argument("--completed", action="store_true")
+    move = task_actions.add_parser("move")
+    move.add_argument("task_id")
+    move.add_argument("--position", required=True, type=positive)
+    rename = task_actions.add_parser("rename")
+    rename.add_argument("task_id")
+    rename.add_argument("title")
+    for name in ("done", "reopen"):
+        task_actions.add_parser(name).add_argument("task_id")
     return result
 
 
@@ -73,6 +88,33 @@ def duration(seconds):
     seconds = max(0, math.ceil(seconds))
     minutes, seconds = divmod(seconds, 60)
     return f"{minutes:02d}:{seconds:02d}"
+
+
+def start_cycle(service, args):
+    if args.task_id is not None:
+        Tasks(service).start(args.task_id, args.minutes)
+    else:
+        service.start(args.task, args.minutes)
+
+
+def task_command(service, args):
+    tasks = Tasks(service)
+    if args.action == "add":
+        task = tasks.add(args.title)
+        return [f"Added task {task['id']}: {task['title']}"]
+    if args.action == "list":
+        entries = tasks.list(args.completed)
+        return [f"{task['id']} | {task['title']} | {'done' if task['completed'] else 'pending'}"
+                for task in entries] or ["No matching tasks."]
+    if args.action == "move":
+        tasks.move(args.task_id, args.position)
+    elif args.action == "rename":
+        tasks.rename(args.task_id, args.title)
+    elif args.action == "done":
+        tasks.complete(args.task_id)
+    else:
+        tasks.reopen(args.task_id)
+    return [f"Task updated: {args.task_id}"]
 
 
 class Terminal:
@@ -185,8 +227,16 @@ class Terminal:
             if any(part in ("-h", "--help") for part in parts):
                 raise ValueError('Usage: start --task "Title" [--minutes N]')
             args = parser(embedded=True).parse_args([name, *parts[1:]])
-            self.service.start(args.task, args.minutes)
+            start_cycle(self.service, args)
             self.workspace.navigate("timer")
+        elif name == "task":
+            if any(part in ("-h", "--help") for part in parts):
+                raise ValueError("Usage: task add/list/move/rename/done/reopen")
+            args = parser(embedded=True).parse_args(parts)
+            lines = task_command(self.service, args)
+            self.workspace.completed_tasks = bool(getattr(args, "completed", False))
+            self.workspace.navigate("tasks")
+            self.message(lines[0])
         elif name == "config":
             if any(part in ("-h", "--help") for part in parts):
                 raise ValueError("Usage: config show | config set KEY MINUTES")
@@ -305,8 +355,9 @@ class Terminal:
 
 def run(args, repository):
     writes = args.command in ("start", "ui") or (args.command == "config" and args.action == "set")
+    writes = writes or (args.command == "task" and args.action != "list")
     if args.command in ("start", "ui"):
-        if args.command == "start" and not args.task.strip():
+        if args.command == "start" and args.task is not None and not args.task.strip():
             raise ValueError("Task must not be empty.")
         if not sys.stdin.isatty() or not sys.stdout.isatty():
             raise ValueError("The timer requires an interactive terminal for input and output.")
@@ -322,9 +373,9 @@ def run(args, repository):
                     print("Choose resume or discard.")
                 service.recover(choice)
                 if choice == "discard" and not keep_open:
-                    service.start(args.task, args.minutes)
+                    start_cycle(service, args)
             elif not keep_open:
-                service.start(args.task, args.minutes)
+                start_cycle(service, args)
             Terminal(service, plain=args.plain, keep_open=keep_open).run()
         elif args.command == "history":
             records = service.history(args.limit)
@@ -340,6 +391,9 @@ def run(args, repository):
             print(f"Total focus time: {duration(report['focus_seconds'])}")
             for task, seconds in sorted(report["tasks"].items()):
                 print(f"  {clean(task)}: {duration(seconds)}")
+        elif args.command == "task":
+            for line in task_command(service, args):
+                print(clean(line))
         elif args.action == "show":
             for key, value in service.state["config"].items():
                 print(f"{key} = {value}")

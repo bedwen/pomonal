@@ -43,13 +43,18 @@ class Service:
             raise ValueError("There is no active run.")
         return active
 
-    def start(self, task: str, minutes: int | None = None) -> None:
+    def start(self, task: str, minutes: int | None = None, *, task_id: str | None = None) -> None:
         if not isinstance(task, str) or not task.strip():
             raise ValueError("A nonempty task name is required.")
         if minutes is not None and not positive_integer(minutes):
             raise ValueError("Duration must be a positive integer number of minutes.")
         if self.state["active"] is not None:
             raise ValueError("An active or recoverable run already exists.")
+        if task_id is not None:
+            saved_task = next((item for item in self.state["tasks"] if item["id"] == task_id), None)
+            if saved_task is None or saved_task["completed"]:
+                raise ValueError("Choose an existing pending task.")
+            task = saved_task["title"]
         duration = minutes if minutes is not None else self.state["config"]["work_minutes"]
         durations = dict(self.state["config"])
         durations["work_minutes"] = duration
@@ -57,7 +62,7 @@ class Service:
             "task": task.strip(),
             "work_minutes": duration,
             "durations": durations,
-            "task_id": None,
+            "task_id": task_id,
             "tags": [],
             "completed_focus": 0,
             "waiting": False,
@@ -65,6 +70,7 @@ class Service:
             "paused": False,
             "session": new_session(task.strip(), "focus", duration, self.clock.now()),
         }
+        self.state["active"]["session"]["task_id"] = task_id
         self.has_recovery = False
         self._anchor = self.clock.monotonic()
         self._save()
@@ -149,6 +155,7 @@ class Service:
             else active["durations"][f"{phase}_minutes"]
         )
         active["session"] = new_session(active["task"], phase, minutes, self.clock.now())
+        active["session"]["task_id"] = active["task_id"]
         active["waiting"] = False
         active["paused"] = False
         active["next_phase"] = None
@@ -161,6 +168,13 @@ class Service:
         if self.state["active"] is not None:
             self.tick()
         self._save()
+
+    def save_changes(self) -> None:
+        """Persist productivity edits without counting unresolved recovery downtime."""
+        if self.has_recovery:
+            self._save()
+        else:
+            self.checkpoint()
 
     def set_config(self, key: str, value: int) -> None:
         if key not in CONFIG_KEYS:

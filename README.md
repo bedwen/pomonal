@@ -82,6 +82,21 @@ Press **Ctrl+C** to save the cycle and exit. Ctrl+D also saves and exits. Run `s
 
 Time while the application is closed is never counted. Progress is checkpointed every five seconds and on state changes; unexpected termination can lose up to five seconds of progress. The countdown uses monotonic time, so changing the wall clock does not change its remaining duration.
 
+## Saved task queue
+
+```bash
+python3 -m pomonal task add "Study algorithms"
+python3 -m pomonal task list
+python3 -m pomonal task move TASK_ID --position 1
+python3 -m pomonal task rename TASK_ID "Practice algorithms"
+python3 -m pomonal start --task-id TASK_ID
+python3 -m pomonal task done TASK_ID
+python3 -m pomonal task list --completed
+python3 -m pomonal task reopen TASK_ID
+```
+
+Use the full ID printed by `task add` or `task list`. The same task commands work inside `ui`. Pending tasks follow queue order; reopened tasks go to its end. Task selection/completion is explicit, with no automatic advancement. You must stop or finish an associated active phase before completing its task. Completion between phases closes the cycle without another history entry. Task renames affect future cycles; current and historical records keep their original title. Ad hoc `start --task "Title"` remains available; it cannot be combined with `--task-id`.
+
 ## History and statistics
 
 History shows the newest finalized sessions first, including breaks and completed, cancelled, or interrupted work. Active sessions are excluded.

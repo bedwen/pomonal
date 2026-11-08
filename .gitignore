@@ -15,6 +15,7 @@
 !/pomonal/state.py
 !/pomonal/preferences.py
 !/pomonal/workspace.py
+!/pomonal/tasks.py
 
 !/tests/
 !/tests/test_cli.py
@@ -24,3 +25,4 @@
 !/tests/test_migration.py
 !/tests/test_preferences.py
 !/tests/test_ui.py
+!/tests/test_tasks.py
