@@ -4,6 +4,7 @@ from math import ceil
 
 from .rendering import format_duration
 from .profiles import Profiles
+from .goals import Goals
 
 
 class Workspace:
@@ -37,6 +38,7 @@ class Workspace:
             return [f"{key} = {value}" for key, value in state["config"].items()] + [
                 f"view = {state['preferences']['view']}",
                 f"profile = {state['preferences']['profile']}",
+                f"Daily goal: {state['goal'] or 'disabled'}",
                 'Change durations: config set work_minutes 30',
                 'Change view: view dashboard / view focus',
                 'Profiles: profile list / profile use NAME',
@@ -45,6 +47,7 @@ class Workspace:
         if self.screen == "stats":
             today = self.service.statistics("today")
             week = self.service.statistics("week")
+            goal = Goals(self.service).progress()
             return [
                 f"Today: {today['start_date']}",
                 f"Completed focus sessions: {today['completed_sessions']}",
@@ -52,7 +55,7 @@ class Workspace:
                 f"Week: {week['start_date']} to {week['end_date']}",
                 f"Weekly completed sessions: {week['completed_sessions']}",
                 f"Weekly focus time: {format_duration(week['focus_seconds'])}",
-            ] + [f"{task}: {format_duration(seconds)}" for task, seconds in sorted(week["tasks"].items())]
+            ] + ([f"Daily goal: {goal['achieved']:g}/{goal['target']} {goal['type']}"] if goal else []) + [f"{task}: {format_duration(seconds)}" for task, seconds in sorted(week["tasks"].items())]
         return []
 
     def page(self, delta, rows):
