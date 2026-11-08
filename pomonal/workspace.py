@@ -12,6 +12,7 @@ class Workspace:
         self.service = service
         self.screen = "timer"
         self.offsets = {screen: 0 for screen in self.SCREENS}
+        self.completed_tasks = False
 
     def navigate(self, screen):
         if screen not in self.SCREENS:
@@ -26,7 +27,7 @@ class Workspace:
         state = self.service.state
         if self.screen == "tasks":
             return [f"{task['id']} | {'done' if task['completed'] else 'pending'} | {task['title']}"
-                    for task in state["tasks"]] or ["No queued tasks."]
+                    for task in state["tasks"] if task["completed"] == self.completed_tasks] or ["No queued tasks."]
         if self.screen == "history":
             return [f"{item['task']} | {item['status']} | {format_duration(item['elapsed_seconds'])} | "
                     f"{item['phase']} | {item['started_at']} | {item['id']}"
