@@ -232,5 +232,27 @@ class CliTests(unittest.TestCase):
                 recovery.recover("discard")
 
 
+    def test_view_selection_persists_across_recovery(self):
+        process, master = self.terminal("start", "--task", "Views", size=(100, 28))
+        self.wait_text(master, "TODAY")
+        os.write(master, b"view focus\n")
+        output = self.wait_text(master, "View: focus")
+        self.assertNotIn("TODAY", output)
+        process.send_signal(signal.SIGINT)
+        self.wait_text(master, "Cycle saved")
+        self.assertEqual(process.wait(timeout=5), 0)
+        saved = json.loads((self.root / "data" / "state.json").read_text())
+        self.assertEqual(saved["preferences"]["view"], "focus")
+        process, master = self.terminal("start", "--task", "Ignored", size=(100, 28))
+        self.wait_text(master, "resume or discard")
+        os.write(master, b"resume\n")
+        output = self.wait_text(master, "Views")
+        self.assertNotIn("TODAY", output)
+        os.write(master, b"view dashboard\n")
+        self.wait_text(master, "TODAY")
+        os.write(master, b"stop\n")
+        self.assertEqual(process.wait(timeout=5), 0)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -15,6 +15,7 @@ import tty
 from .application import Service
 from .domain import positive_integer
 from .infrastructure import JsonRepository, SystemClock
+from .preferences import Preferences
 from .rendering import DisplaySnapshot, clean_text, clip_text, render_frame
 
 
@@ -66,6 +67,7 @@ class Terminal:
 
     def __init__(self, service, *, plain=False):
         self.service = service
+        self.preferences = Preferences(service.state, service.checkpoint)
         self.buffer = ""
         self.feedback = "Type commands and press Enter. Ctrl+C saves the cycle."
         self.decoder = codecs.getincrementaldecoder("utf-8")("replace")
@@ -114,6 +116,8 @@ class Terminal:
             next_phase=active["next_phase"] if active["waiting"] else upcoming,
             today_focus_seconds=report["focus_seconds"], today_completed=report["completed_sessions"],
             feedback=self.feedback, command=self.buffer,
+            view=self.preferences.view,
+            upcoming_tasks=tuple(task["title"] for task in self.service.state["tasks"] if not task["completed"]),
         )
 
     def render(self):
@@ -137,8 +141,11 @@ class Terminal:
         if not command:
             return
         self.message("> " + command)
-        if command == "help":
-            self.message("Commands: pause, resume, stop, help; between phases: continue, quit.")
+        if command.startswith("view "):
+            self.preferences.set_view(command[5:].strip())
+            self.message(f"View: {self.preferences.view}")
+        elif command == "help":
+            self.message("Commands: pause, resume, stop, help; view dashboard/focus; between phases: continue, quit.")
         elif command == "pause":
             self.service.pause()
         elif command == "resume":
