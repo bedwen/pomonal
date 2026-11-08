@@ -86,13 +86,14 @@ All runtime data is stored in `data/state.json` beneath the project root. This v
 
 Writes use a project-local temporary file, file synchronization, atomic replacement, and directory synchronization. A Linux file lock prevents simultaneous timer/configuration writers. History and configuration reads remain available while the timer runs. The lock file may remain after exit; the operating system releases its lock automatically.
 
-Data paths and files must not be symbolic links; data files must not be hard-linked. Descriptor-relative filesystem operations keep writes attached to the opened project data directory. Invalid or unsupported saved documents produce an error and are preserved for inspection. The application does not automatically reset or migrate them.
+Data paths and files must not be symbolic links; data files must not be hard-linked. Descriptor-relative filesystem operations keep writes attached to the opened project data directory. Invalid or unsupported saved documents produce an error and are preserved for inspection. Version-1 documents are migrated in memory for reads. Before the first version-2 write, a verified byte-preserving backup is created inside `data/` under the writer lock. Existing backups are never overwritten. History, settings, and recoverable cycles are preserved; active cycles keep their captured focus and break durations.
 
 No files are written to the home directory, system temporary directory, or global configuration paths. Bytecode generation is disabled during application startup. Do not redirect Python's own startup caches or diagnostics outside this project. Development commands use `-B` explicitly.
 
 ## Architecture
 
 - `domain`: pure configuration, phase rules, and session creation.
+- `state`: validation of supported data versions and lossless in-memory migration.
 - `application`: use cases and state transitions, depending on small `Clock` and `Repository` protocols.
 - `infrastructure`: system clock, local calendar conversion, validated JSON persistence, and locking.
 - `presentation`: argument parsing, command dispatch, display snapshots, and terminal lifecycle.

@@ -4,7 +4,6 @@ from contextlib import contextmanager
 from datetime import datetime
 import fcntl
 import json
-import math
 import os
 from pathlib import Path
 import time
@@ -23,70 +22,7 @@ class SystemClock:
         return timestamp.astimezone().date()
 
 
-def validate_state(state):
-    """Reject malformed data rather than silently replacing user records."""
-    def require(condition):
-        if not condition:
-            raise ValueError("Invalid saved data. The original file has been preserved.")
-
-    from .domain import positive_integer
-
-    def finite(value):
-        try:
-            return type(value) in (int, float) and math.isfinite(value)
-        except OverflowError:
-            return False
-
-    require(isinstance(state, dict))
-    require(all(key in state for key in ("version", "config", "history", "active")))
-    require(type(state.get("version")) is int)
-    if state["version"] != 1:
-        raise ValueError("Unsupported saved data version. The original file has been preserved.")
-    config = state.get("config")
-    require(isinstance(config, dict))
-    for key in ("work_minutes", "short_break_minutes", "long_break_minutes"):
-        require(positive_integer(config.get(key)))
-    require(isinstance(state.get("history"), list))
-
-    def record(item, historical):
-        require(isinstance(item, dict))
-        for key in ("id", "task", "started_at", "status", "phase"):
-            require(isinstance(item.get(key), str) and bool(item[key].strip()))
-        require(item["phase"] in ("focus", "short_break", "long_break"))
-        require(item["status"] in (("completed", "cancelled", "interrupted") if historical else ("running",)))
-        for key in ("planned_seconds", "elapsed_seconds"):
-            require(finite(item.get(key)))
-        require(item["planned_seconds"] > 0 and 0 <= item["elapsed_seconds"] <= item["planned_seconds"])
-        for key in ("started_at", "ended_at"):
-            value = item.get(key)
-            if key == "ended_at" and not historical:
-                require(value is None)
-            else:
-                require(isinstance(value, str))
-                require(datetime.fromisoformat(value).utcoffset() is not None)
-
-    ids = set()
-    for item in state["history"]:
-        record(item, True)
-        require(item["id"] not in ids)
-        ids.add(item["id"])
-    active = state.get("active")
-    if active is not None:
-        require(isinstance(active, dict))
-        require(all(key in active for key in ("task", "work_minutes", "completed_focus",
-                                              "waiting", "paused", "session", "next_phase")))
-        require(isinstance(active.get("task"), str) and bool(active["task"].strip()))
-        require(positive_integer(active.get("work_minutes")))
-        require(type(active.get("completed_focus")) is int and active["completed_focus"] >= 0)
-        require(type(active.get("waiting")) is bool and type(active.get("paused")) is bool)
-        if active["waiting"]:
-            require(active.get("session") is None)
-            require(active.get("next_phase") in ("focus", "short_break", "long_break"))
-        else:
-            require(active.get("next_phase") is None)
-            record(active.get("session"), False)
-            require(active["session"]["id"] not in ids)
-            require(active["session"]["task"] == active["task"])
+from .state import migrate_state, validate_state
 
 
 class JsonRepository:
@@ -94,6 +30,9 @@ class JsonRepository:
         self.root = Path(root).resolve(strict=True)
         self.directory = self.root / "data"
         self.path = self.directory / "state.json"
+        self._writer_depth = 0
+        self._loaded = False
+        self._last_raw = None
 
     def _safe(self, path):
         if path.is_symlink() or not path.resolve().is_relative_to(self.root):
@@ -135,49 +74,101 @@ class JsonRepository:
         if not stat.S_ISREG(metadata.st_mode) or metadata.st_nlink != 1:
             raise ValueError("Data files must be regular files without symbolic or hard links.")
 
+    def _read_bytes(self, directory_fd, name="state.json"):
+        if directory_fd is None:
+            return None
+        self._regular(directory_fd, name)
+        try:
+            descriptor = os.open(name, os.O_RDONLY | os.O_NOFOLLOW, dir_fd=directory_fd)
+        except FileNotFoundError:
+            return None
+        with os.fdopen(descriptor, "rb") as handle:
+            return handle.read()
+
+    @staticmethod
+    def _decode(raw):
+        try:
+            state = json.loads(raw)
+            validate_state(state)
+        except (json.JSONDecodeError, UnicodeError, TypeError, KeyError, OverflowError) as error:
+            raise ValueError("Invalid saved data. The original file has been preserved.") from error
+        return state
+
     def load(self):
         from .domain import default_state
         self._safe(self.path)
         with self._directory() as directory_fd:
-            if directory_fd is None:
-                return default_state()
-            self._regular(directory_fd, "state.json")
-            try:
-                descriptor = os.open("state.json", os.O_RDONLY | os.O_NOFOLLOW, dir_fd=directory_fd)
-            except FileNotFoundError:
-                return default_state()
-            try:
-                with os.fdopen(descriptor, encoding="utf-8") as handle:
-                    state = json.load(handle)
-                validate_state(state)
-            except (json.JSONDecodeError, UnicodeError, TypeError, KeyError, OverflowError) as error:
-                raise ValueError("Invalid saved data. The original file has been preserved.") from error
+            raw = self._read_bytes(directory_fd)
+            state = default_state() if raw is None else migrate_state(self._decode(raw))
+            self._loaded = True
+            self._last_raw = raw
             return state
 
+    def _backup_legacy(self, directory_fd, raw):
+        """Durably verify an exact source backup before upgrading its document."""
+        name = f"state-v1-{uuid4().hex}.backup.json"
+        descriptor = os.open(name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+                             0o600, dir_fd=directory_fd)
+        try:
+            with os.fdopen(descriptor, "wb") as handle:
+                handle.write(raw)
+                handle.flush()
+                os.fsync(handle.fileno())
+            if self._read_bytes(directory_fd, name) != raw:
+                raise OSError("Could not verify the legacy state backup; original data was preserved.")
+            os.fsync(directory_fd)
+        except BaseException:
+            os.unlink(name, dir_fd=directory_fd)
+            raise
+        return name
+
     def save(self, state):
-        validate_state(state)
-        with self._directory(create=True) as directory_fd:
-            self._regular(directory_fd, "state.json")
-            name = f".state-{uuid4().hex}.tmp"
-            descriptor = os.open(name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
-                                 0o600, dir_fd=directory_fd)
-            try:
-                with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
-                    json.dump(state, handle, indent=2, allow_nan=False)
-                    handle.write("\n")
-                    handle.flush()
-                    os.fsync(handle.fileno())
-                self._regular(directory_fd, "state.json")
-                os.replace(name, "state.json", src_dir_fd=directory_fd, dst_dir_fd=directory_fd)
-                os.fsync(directory_fd)
-            finally:
+        state = migrate_state(state)
+        self._safe(self.path)
+        # The CLI holds the writer across its session; direct callers receive the
+        # same exclusion automatically without reacquiring an already-held lock.
+        with self.writer():
+            with self._directory(create=True) as directory_fd:
+                raw = self._read_bytes(directory_fd)
+                if self._loaded and raw != self._last_raw:
+                    raise ValueError("Saved data changed since it was loaded. Reload before saving.")
+                if raw is not None:
+                    source = self._decode(raw)
+                    if source["version"] == 1:
+                        self._backup_legacy(directory_fd, raw)
+                serialized = (json.dumps(state, indent=2, allow_nan=False) + "\n").encode("utf-8")
+                name = f".state-{uuid4().hex}.tmp"
+                descriptor = os.open(name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+                                     0o600, dir_fd=directory_fd)
                 try:
-                    os.unlink(name, dir_fd=directory_fd)
-                except FileNotFoundError:
-                    pass
+                    with os.fdopen(descriptor, "wb") as handle:
+                        handle.write(serialized)
+                        handle.flush()
+                        os.fsync(handle.fileno())
+                    self._regular(directory_fd, "state.json")
+                    # A non-cooperating editor is not covered by flock. Recheck
+                    # the source just before committing the replacement too.
+                    if self._read_bytes(directory_fd) != raw:
+                        raise ValueError("Saved data changed during the write. Reload before saving.")
+                    os.replace(name, "state.json", src_dir_fd=directory_fd, dst_dir_fd=directory_fd)
+                    self._last_raw = serialized
+                    self._loaded = True
+                    os.fsync(directory_fd)
+                finally:
+                    try:
+                        os.unlink(name, dir_fd=directory_fd)
+                    except FileNotFoundError:
+                        pass
 
     @contextmanager
     def writer(self):
+        if self._writer_depth:
+            self._writer_depth += 1
+            try:
+                yield
+            finally:
+                self._writer_depth -= 1
+            return
         with self._directory(create=True) as directory_fd:
             self._regular(directory_fd, "writer.lock")
             descriptor = os.open("writer.lock", os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW,
@@ -187,6 +178,10 @@ class JsonRepository:
                     fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
                 except BlockingIOError as error:
                     raise ValueError("Another Pomonal writer is running. Close it before making changes.") from error
-                yield
+                self._writer_depth = 1
+                try:
+                    yield
+                finally:
+                    self._writer_depth = 0
             finally:
                 os.close(descriptor)

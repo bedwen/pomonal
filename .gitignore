@@ -12,9 +12,11 @@
 !/pomonal/infrastructure.py
 !/pomonal/presentation.py
 !/pomonal/rendering.py
+!/pomonal/state.py
 
 !/tests/
 !/tests/test_cli.py
 !/tests/test_core.py
 !/tests/test_infrastructure.py
 !/tests/test_rendering.py
+!/tests/test_migration.py
