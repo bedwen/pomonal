@@ -3,6 +3,7 @@
 from math import ceil
 
 from .rendering import format_duration
+from .profiles import Profiles
 
 
 class Workspace:
@@ -38,7 +39,9 @@ class Workspace:
                 f"profile = {state['preferences']['profile']}",
                 'Change durations: config set work_minutes 30',
                 'Change view: view dashboard / view focus',
-            ]
+                'Profiles: profile list / profile use NAME',
+            ] + [f"{name}: {values['work_minutes']}/{values['short_break_minutes']}/{values['long_break_minutes']}"
+                 for name, values in Profiles(self.service).list().items()]
         if self.screen == "stats":
             today = self.service.statistics("today")
             week = self.service.statistics("week")

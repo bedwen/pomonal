@@ -280,5 +280,25 @@ class CliTests(unittest.TestCase):
         self.assertNotEqual(self.cli("task", "move", task_id, "--position", "2").returncode, 0)
 
 
+    def test_profile_selection_override_and_workspace_settings(self):
+        saved = self.cli("profile", "save", "Reading", "--work", "40", "--short-break", "5", "--long-break", "15")
+        self.assertEqual(saved.returncode, 0, saved.stderr)
+        self.assertEqual(self.cli("profile", "use", "READING").returncode, 0)
+        self.assertIn("* reading", self.cli("profile", "list").stdout)
+        process, master = self.terminal("ui")
+        self.wait_text(master, "IDLE")
+        os.write(master, b'start --task "Profile test" --profile deep-work --minutes 1\n')
+        self.wait_text(master, "01:00")
+        os.write(master, b"profile save reading --work 60 --short-break 2 --long-break 8\n")
+        self.wait_text(master, "Profile saved")
+        os.write(master, b"exit\n")
+        self.assertEqual(process.wait(timeout=5), 0)
+        state = json.loads((self.root / "data" / "state.json").read_text())
+        self.assertEqual(state["active"]["durations"],
+                         {"work_minutes": 1, "short_break_minutes": 10, "long_break_minutes": 15})
+        self.assertEqual(state["profiles"]["reading"]["work_minutes"], 60)
+        self.assertNotEqual(self.cli("profile", "save", "classic", "--work", "1", "--short-break", "1", "--long-break", "1").returncode, 0)
+
+
 if __name__ == "__main__":
     unittest.main()

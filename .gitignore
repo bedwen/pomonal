@@ -16,6 +16,7 @@
 !/pomonal/preferences.py
 !/pomonal/workspace.py
 !/pomonal/tasks.py
+!/pomonal/profiles.py
 
 !/tests/
 !/tests/test_cli.py
@@ -26,3 +27,4 @@
 !/tests/test_preferences.py
 !/tests/test_ui.py
 !/tests/test_tasks.py
+!/tests/test_profiles.py

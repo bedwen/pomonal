@@ -82,6 +82,17 @@ Press **Ctrl+C** to save the cycle and exit. Ctrl+D also saves and exits. Run `s
 
 Time while the application is closed is never counted. Progress is checkpointed every five seconds and on state changes; unexpected termination can lose up to five seconds of progress. The countdown uses monotonic time, so changing the wall clock does not change its remaining duration.
 
+## Duration profiles
+
+```bash
+python3 -m pomonal profile list
+python3 -m pomonal profile save reading --work 40 --short-break 5 --long-break 15
+python3 -m pomonal profile use reading
+python3 -m pomonal start --task "Read" --profile reading --minutes 45
+```
+
+Profiles work with saved task IDs too, and all profile commands are available inside `ui`. Names are trimmed and case-normalized. Built-in `classic` (25/5/15), `deep-work` (50/10/15), and `default` cannot be overwritten. `default` follows existing configuration and is initially selected. Explicit `--profile` overrides the saved selection; `--minutes` overrides only focus duration within that cycle. Focus and both break durations are captured together, so profile/settings edits do not alter active or recovered cycles. A long break still follows every fourth completed focus session.
+
 ## Saved task queue
 
 ```bash

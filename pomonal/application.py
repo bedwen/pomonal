@@ -43,7 +43,8 @@ class Service:
             raise ValueError("There is no active run.")
         return active
 
-    def start(self, task: str, minutes: int | None = None, *, task_id: str | None = None) -> None:
+    def start(self, task: str, minutes: int | None = None, *, task_id: str | None = None,
+              durations: dict | None = None) -> None:
         if not isinstance(task, str) or not task.strip():
             raise ValueError("A nonempty task name is required.")
         if minutes is not None and not positive_integer(minutes):
@@ -55,8 +56,11 @@ class Service:
             if saved_task is None or saved_task["completed"]:
                 raise ValueError("Choose an existing pending task.")
             task = saved_task["title"]
-        duration = minutes if minutes is not None else self.state["config"]["work_minutes"]
-        durations = dict(self.state["config"])
+        source = self.state["config"] if durations is None else durations
+        if not isinstance(source, dict) or not all(positive_integer(source.get(key)) for key in CONFIG_KEYS):
+            raise ValueError("Cycle durations must contain positive finite integer minutes.")
+        durations = {key: source[key] for key in CONFIG_KEYS}
+        duration = minutes if minutes is not None else durations["work_minutes"]
         durations["work_minutes"] = duration
         self.state["active"] = {
             "task": task.strip(),
