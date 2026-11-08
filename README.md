@@ -173,6 +173,8 @@ No files are written to the home directory, system temporary directory, or globa
 - `domain`: pure configuration, phase rules, and session creation.
 - `state`: validation of supported data versions and lossless in-memory migration.
 - `application`: use cases and state transitions, depending on small `Clock` and `Repository` protocols.
+- `tasks`, `profiles`, `goals`, and `annotations`: focused productivity use cases sharing the timer's persistence context.
+- `reports`: shared finalized-session filtering and local calendar aggregation; `exporting` handles atomic CSV output.
 - `infrastructure`: system clock, local calendar conversion, validated JSON persistence, and locking.
 - `presentation`: argument parsing, command dispatch, display snapshots, and terminal lifecycle.
 - `rendering`: pure display snapshots to positioned frames, ASCII digits, palettes, and Unicode cell-aware layout. It performs no terminal or filesystem I/O.

@@ -45,10 +45,12 @@ class Workspace:
                     result.append("Note: " + item["note"])
             return result or ["No finalized sessions."]
         if self.screen == "settings":
+            goal = state["goal"]
+            goal_text = "disabled" if goal is None else f"{goal['target']} {goal['type']} per day"
             return [f"{key} = {value}" for key, value in state["config"].items()] + [
                 f"view = {state['preferences']['view']}",
                 f"profile = {state['preferences']['profile']}",
-                f"Daily goal: {state['goal'] or 'disabled'}",
+                f"Daily goal: {goal_text}",
                 'Change durations: config set work_minutes 30',
                 'Change view: view dashboard / view focus',
                 'Profiles: profile list / profile use NAME',
