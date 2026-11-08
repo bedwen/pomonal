@@ -21,6 +21,11 @@ class DisplaySnapshot:
     command: str = ""
     view: str = "dashboard"
     upcoming_tasks: tuple[str, ...] = ()
+    screen: str = "timer"
+    content_lines: tuple[str, ...] = ()
+    page: int = 1
+    total_pages: int = 1
+    idle: bool = False
 
 
 @dataclass(frozen=True)
@@ -103,6 +108,8 @@ def render_frame(snapshot, columns, rows, *, color=True, truecolor=False):
     phase = clean_text(snapshot.phase).upper().replace("_", " ")
     status = f"Ready for {snapshot.next_phase} | continue / quit" if snapshot.waiting else (
         f"{phase} | PAUSED" if snapshot.paused else phase)
+    if snapshot.idle:
+        status = "IDLE"
     progress = 1.0 if snapshot.waiting else min(1.0, max(0.0, snapshot.progress))
     bar_width = max(0, min(40, width - 9))
     filled = int(progress * bar_width)
@@ -162,7 +169,24 @@ def render_frame(snapshot, columns, rows, *, color=True, truecolor=False):
 
     focus_only = snapshot.view == "focus"
     upcoming = list(snapshot.upcoming_tasks) or ["No queued tasks"]
-    if layout != "compact":
+    if snapshot.screen != "timer":
+        if layout != "compact":
+            put(0, f"POMONAL | {time_text} | {status}", accent=True)
+            put(1, f"{snapshot.screen.upper()} | Page {snapshot.page}/{snapshot.total_pages}")
+            panel(0, 2, width, rows - 6, snapshot.screen.upper(), list(snapshot.content_lines))
+            put(rows - 3, "timer / tasks / history / stats / settings | next / prev")
+            put(rows - 2, snapshot.feedback, centered=False)
+        else:
+            put(0, f"{time_text} | {status}", centered=False, accent=True)
+            if rows >= 3:
+                put(1, f"{snapshot.screen.upper()} {snapshot.page}/{snapshot.total_pages}", centered=False)
+            available = max(0, rows - 4)
+            for index, text in enumerate(snapshot.content_lines[:available]):
+                put(index + 2, text, centered=False)
+            if rows >= 4:
+                put(rows - 2, snapshot.feedback, centered=False)
+        put(rows - 1, command, centered=False)
+    elif layout != "compact":
         put(0, "POMONAL | " + status, accent=True)
         if focus_only:
             body = clock_lines(width, spacious=True)
@@ -217,7 +241,7 @@ def render_frame(snapshot, columns, rows, *, color=True, truecolor=False):
     if color:
         if snapshot.paused:
             code = "\033[93m"
-        elif snapshot.phase != "focus":
+        elif snapshot.phase != "focus" and not snapshot.idle:
             code = "\033[92m"
         else:
             code = "\033[38;2;96;165;250m" if truecolor else "\033[94m"

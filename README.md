@@ -56,6 +56,10 @@ Full-screen mode uses the alternate terminal screen, leaving your previous scree
 
 ## Timer controls
 
+For a workspace that stays open between cycles, use `python3 -m pomonal ui` (or `ui --plain`). Start a cycle inside it with `start --task "Study algorithms" --minutes 25`. Navigate with `timer`, `tasks`, `history`, `stats`, and `settings`; `next` and `prev` page through longer lists. The timer continues while you browse, and every screen retains a small countdown and a persistent completion prompt.
+
+In the workspace, `stop` cancels the active phase and returns to idle. `exit` saves a recoverable cycle and closes the application. `quit` closes an idle workspace or finishes a cycle between phases. The existing `start` entry point still exits after `stop`. Use `config show` and `config set work_minutes 30` inside the workspace to inspect/change future cycle defaults; running cycles keep their captured durations.
+
 The screen displays the phase, remaining time, completed focus count, task, and command buffer. Type a command and press Enter:
 
 | Command | Behavior |
