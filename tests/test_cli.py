@@ -1,6 +1,7 @@
 """CLI and real Linux pseudo-terminal integration tests."""
 
 import json
+import csv
 import fcntl
 import os
 from pathlib import Path
@@ -382,6 +383,50 @@ class CliTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertNotIn("\033", result.stdout)
         self.assertIn("Safe display", result.stdout)
+
+
+    def test_filtered_csv_roundtrip_and_writer_exclusion(self):
+        from pomonal.domain import new_session
+        repository = JsonRepository(self.root)
+        state = repository.load()
+        now = SystemClock().now()
+        note = 'A comma, a "quote", 日本語\nNext step'
+        for title, phase, tags in (('Read, "book" 日本語', "focus", ["reading"]),
+                                   ("Break", "short_break", []), ("Other", "focus", ["other"])):
+            record = new_session(title, phase, 1, now)
+            record.update(status="completed", ended_at=now.isoformat(), elapsed_seconds=60,
+                          note=note, tags=tags)
+            state["history"].append(record)
+        repository.save(state)
+        service = Service(repository, SystemClock())
+        service.start("Active excluded", 1, tags=["reading"])
+        result = self.cli("export", "--output", "reports/reading.csv", "--tag", "READING")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        path = self.root / "reports" / "reading.csv"
+        with path.open(encoding="utf-8", newline="") as handle:
+            rows = list(csv.DictReader(handle))
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["task_title"], 'Read, "book" 日本語')
+        self.assertEqual(rows[0]["note"], note)
+        self.assertEqual(json.loads(rows[0]["tags"]), ["reading"])
+        before = path.read_bytes()
+        self.assertNotEqual(self.cli("export", "--output", "reports/reading.csv").returncode, 0)
+        self.assertEqual(path.read_bytes(), before)
+        self.assertEqual(self.cli("export", "--output", "reports/reading.csv", "--tag", "reading", "--overwrite").returncode, 0)
+        self.assertEqual(path.read_bytes(), before)
+        process, master = self.terminal("ui")
+        self.wait_text(master, "resume or discard")
+        os.write(master, b"resume\n")
+        self.wait_text(master, "Active excluded")
+        blocked = self.cli("export", "--output", "reports/blocked.csv")
+        self.assertNotEqual(blocked.returncode, 0)
+        self.assertIn("Another Pomonal", blocked.stderr)
+        self.assertFalse((self.root / "reports" / "blocked.csv").exists())
+        os.write(master, b"export --output reports/ui.csv --tag reading\n")
+        self.wait_text(master, "Exported 1 session")
+        self.assertTrue((self.root / "reports" / "ui.csv").is_file())
+        os.write(master, b"exit\n")
+        self.assertEqual(process.wait(timeout=5), 0)
 
 
 if __name__ == "__main__":

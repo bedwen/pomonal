@@ -142,6 +142,22 @@ Daily statistics use the current local calendar day. Weekly statistics use Monda
 
 `stats --week` and the workspace stats screen include seven daily bars, including zero-activity days. Bars share the week's largest daily value as their scale and retain numeric durations. Interactive bars are blue; redirected output and `NO_COLOR` remain plain text. Use `next`/`prev` to page the workspace summary when space is limited.
 
+## CSV export
+
+```bash
+python3 -m pomonal export --output reports/sessions.csv
+python3 -m pomonal export --output reports/reading.csv --tag reading --from-date 2026-11-01 --to-date 2026-11-08
+python3 -m pomonal export --output reports/sessions.csv --overwrite
+```
+
+The same command works inside `ui`. Export includes finalized focus and break records, excludes the active session, and supports the same combined filters as history. UTF-8 CSV preserves Unicode, commas, quotes, line breaks, and tags encoded as a JSON array.
+
+Columns are `session_id`, `task_id`, `task_title`, `phase`, `status`, `started_at`, `ended_at`, `planned_seconds`, `active_seconds`, `note`, and `tags`. An absent task ID is an empty CSV field.
+
+Use a `.csv` destination inside the project, typically `reports/`. Parent directories are created locally. Paths outside the project, parent traversal, hidden components, protected product/data directories, symbolic links, and hard-linked targets are rejected. Existing files require explicit `--overwrite`. Writes use synchronized project-local temporary files and atomic publication; failed writes before publication preserve existing files.
+
+Exports are excluded from Git by the product allowlist. A standalone export acquires the repository writer lock; while a workspace is running, use its internal `export` command or close it first. Export never changes the saved session data.
+
 ## Local data and safety
 
 All runtime data is stored in `data/state.json` beneath the project root. This versioned JSON document contains configuration, finalized history, and the active cycle. Data and test artifacts are ignored by Git.

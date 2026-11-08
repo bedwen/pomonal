@@ -23,6 +23,8 @@ from .tasks import Tasks
 from .profiles import Profiles
 from .goals import Goals
 from .annotations import Annotations
+from .exporting import CsvExporter
+from .reports import Reports
 
 
 def positive(value):
@@ -121,6 +123,10 @@ def parser(*, embedded=False):
     tags = session_actions.add_parser("tags")
     tags.add_argument("session_id")
     tags.add_argument("tags", nargs="*")
+    export = commands.add_parser("export", help="Export finalized sessions as UTF-8 CSV.")
+    export.add_argument("--output", required=True)
+    export.add_argument("--overwrite", action="store_true")
+    add_filters(export)
     return result
 
 
@@ -150,6 +156,12 @@ def session_command(service, args):
     else:
         annotations.tags(args.session_id, args.tags)
     return f"Updated session {args.session_id}"
+
+
+def export_command(service, repository, args):
+    records = Reports(service.state, service.clock).query(**filters_from(args))
+    destination = CsvExporter(repository.root).write(records, args.output, overwrite=args.overwrite)
+    return f"Exported {len(records)} session{'s' if len(records) != 1 else ''} to {destination.relative_to(repository.root)}"
 
 
 def profile_command(service, args):
@@ -329,6 +341,11 @@ class Terminal:
                 self.workspace.stats_period = period
             self.workspace.offsets[name] = 0
             self.workspace.navigate(name)
+        elif name == "export":
+            if any(part in ("-h", "--help") for part in parts):
+                raise ValueError("Usage: export --output reports/sessions.csv [--overwrite] [FILTERS]")
+            args = parser(embedded=True).parse_args(parts)
+            self.message(export_command(self.service, self.service.repository, args))
         elif name == "session":
             if any(part in ("-h", "--help") for part in parts):
                 raise ValueError('Usage: session note ID "Text" | session tags ID [TAGS]')
@@ -484,6 +501,7 @@ def run(args, repository):
     writes = writes or (args.command == "profile" and args.action != "list")
     writes = writes or (args.command == "goal" and args.action != "show")
     writes = writes or args.command == "session"
+    writes = writes or args.command == "export"
     if args.command in ("start", "ui"):
         if args.command == "start" and args.task is not None and not args.task.strip():
             raise ValueError("Task must not be empty.")
@@ -529,6 +547,8 @@ def run(args, repository):
                 blue = "\033[38;2;96;165;250m" if os.environ.get("COLORTERM", "").lower() in ("truecolor", "24bit") else "\033[94m"
                 for line in daily_bars(report["days"], max(1, columns - 1)):
                     print((blue + line + "\033[0m") if colored else line)
+        elif args.command == "export":
+            print(clean(export_command(service, repository, args)))
         elif args.command == "session":
             print(clean(session_command(service, args)))
         elif args.command == "goal":
