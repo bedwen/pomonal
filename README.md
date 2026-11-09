@@ -1,30 +1,47 @@
 # Pomonal
 
-A local Linux terminal Pomodoro timer built with Python 3.14 and its standard library. No packages, account, network connection, or system-wide installation are required.
+Pomonal is a Linux terminal Pomodoro timer for focused work and local progress tracking.
 
-## Run
+Its guiding principle is simple: **a focus tool that runs locally, using only Python's standard library.** Built with Python 3.14, Pomonal keeps your records in the project directory and requires no third-party packages, account, network connection, or system-wide installation.
 
-From the project directory:
+**Python 3.14 · Linux · Standard library only**
+
+| Focus | Organize | Review |
+| --- | --- | --- |
+| Large countdown, pause/resume, and confirmed breaks | Saved task queue, duration profiles, and daily goals | Session history, notes, tags, weekly charts, and CSV export |
+
+## Quick start
+
+From the project directory, open the workspace:
 
 ```bash
-python3 -m pomonal start --task "Study algorithms"
-python3 -m pomonal start --task "Read a book" --minutes 45
-python3 -m pomonal start --task "Study algorithms" --plain
-python3 -m pomonal history
-python3 -m pomonal history --limit 10
-python3 -m pomonal stats --today
-python3 -m pomonal stats --week
-python3 -m pomonal config show
-python3 -m pomonal config set work_minutes 30
-python3 -m pomonal config set short_break_minutes 5
-python3 -m pomonal config set long_break_minutes 15
+python3 -m pomonal ui
 ```
 
-Use `python3 -m pomonal --help` for command help. Durations are positive integer minutes within the finite numeric range supported by the timer. `--minutes` changes focus duration for the entire current cycle, including after recovery, without changing saved settings.
+Then type a command and press Enter:
 
-The module must be available on Python's import path. Running from this directory is the simplest option; when imported from another working directory, data still belongs to this project. The timer requires interactive Linux terminal input and output. History, statistics, and configuration inspection work with redirected output.
+```text
+start --task "Study algorithms"
+```
+
+For a single cycle, launch directly from your shell:
+
+```bash
+python3 -m pomonal start --task "Read a book" --minutes 45
+```
+
+**25 minutes of focus → 5-minute break → repeat.** Every fourth completed focus session is followed by a 15-minute break. Each new phase waits for `continue`.
+
+The timer requires interactive Linux terminal input and output. History, statistics, and configuration inspection also work with redirected output. Run from this directory so Python can find the module; data remains attached to the project even when launched from another working directory.
+
+[Timer controls](#timer-controls) · [Display](#focus-screen) · [Workflow reference](#workflow-reference) · [Local data](#local-data-and-safety) · [Development](#development)
 
 ## Focus screen
+
+A blue digital countdown anchors the dashboard, with daily progress and upcoming tasks alongside it. Type `view focus` for a quieter screen or `view dashboard` to restore the panels. The layout adapts to the terminal size.
+
+<details>
+<summary>Layout, colors, accessibility, and terminal compatibility</summary>
 
 The dashboard uses bordered timer, daily summary, and upcoming-task panels. Large terminals place secondary panels beside the clock; standard terminals stack them. An empty task queue shows `No queued tasks`.
 
@@ -54,6 +71,8 @@ NO_COLOR=1 python3 -m pomonal start --task "Read a book"
 
 Full-screen mode uses the alternate terminal screen, leaving your previous screen available when the application exits. Cursor visibility is left untouched. Input settings and colors are restored and the alternate screen is closed after normal exit, Ctrl+C, or a rendering error. Ctrl+C and Ctrl+D save a recoverable cycle; their confirmation is printed after returning to your original screen.
 
+</details>
+
 ## Timer controls
 
 For a workspace that stays open between cycles, use `python3 -m pomonal ui` (or `ui --plain`). Start a cycle inside it with `start --task "Study algorithms" --minutes 25`. Navigate with `timer`, `tasks`, `history`, `stats`, and `settings`; `next` and `prev` page through longer lists. The timer continues while you browse, and every screen retains a small countdown and a persistent completion prompt.
@@ -66,14 +85,18 @@ The screen displays the phase, remaining time, completed focus count, task, and 
 | --- | --- |
 | `pause` | Freeze the active phase. |
 | `resume` | Resume a paused phase. |
-| `stop` | Record the active phase as cancelled and exit. |
+| `stop` | Cancel the active phase; return to idle in `ui`, or exit in `start` mode. |
 | `help` | Display available commands. |
 | `continue` | Start the next phase when the previous phase has completed. |
-| `quit` | Exit between phases. |
+| `quit` | Close an idle workspace or exit between phases. |
+| `exit` | Save the current cycle and close the application. |
 
 Backspace edits the input buffer. Commands are case-insensitive. Terminal settings are restored on exit.
 
 Defaults are 25 minutes of focus, 5 minutes of short break, and 15 minutes of long break after every fourth completed focus session. Each phase transition waits for `continue`; time spent waiting is never counted. Paused time is also excluded. The same task continues until exit.
+
+<details>
+<summary>Saving, recovery, and timing guarantees</summary>
 
 Press **Ctrl+C** to save the cycle and exit. Ctrl+D also saves and exits. Run `start` again to choose:
 
@@ -82,7 +105,28 @@ Press **Ctrl+C** to save the cycle and exit. Ctrl+D also saves and exits. Run `s
 
 Time while the application is closed is never counted. Progress is checkpointed every five seconds and on state changes; unexpected termination can lose up to five seconds of progress. The countdown uses monotonic time, so changing the wall clock does not change its remaining duration.
 
-## Daily goals
+</details>
+
+## Workflow reference
+
+Common shell commands:
+
+| Action | Command |
+| --- | --- |
+| Recent sessions | `python3 -m pomonal history --limit 10` |
+| Today's progress | `python3 -m pomonal stats --today` |
+| Weekly summary | `python3 -m pomonal stats --week` |
+| Current settings | `python3 -m pomonal config show` |
+| Change focus duration | `python3 -m pomonal config set work_minutes 30` |
+| Command help | `python3 -m pomonal --help` |
+
+Configuration keys are `work_minutes`, `short_break_minutes`, and `long_break_minutes`. Values must be positive integer minutes within the timer's finite numeric range. `--minutes` overrides focus duration for the current cycle, including recovery, without changing saved settings.
+
+
+### Daily goals
+
+<details>
+<summary>Set a daily session or focus-minute target</summary>
 
 ```bash
 python3 -m pomonal goal set --sessions 6
@@ -93,7 +137,12 @@ python3 -m pomonal goal clear
 
 Goals are initially disabled. Select one target type at a time: completed focus sessions or finalized active focus minutes. Cancelled/interrupted sessions contribute their recorded focus time to minute targets, but do not count as completed sessions. Active sessions, breaks, pauses, and application downtime are excluded. Progress uses the current local day; indicators stop at 100% while actual achieved totals remain visible. The dashboard and stats/settings screens show the configured goal; the same commands work in `ui`. Focus-only view hides goal details.
 
-## Duration profiles
+</details>
+
+### Duration profiles
+
+<details>
+<summary>Choose built-in durations or save your own</summary>
 
 ```bash
 python3 -m pomonal profile list
@@ -104,7 +153,12 @@ python3 -m pomonal start --task "Read" --profile reading --minutes 45
 
 Profiles work with saved task IDs too, and all profile commands are available inside `ui`. Names are trimmed and case-normalized. Built-in `classic` (25/5/15), `deep-work` (50/10/15), and `default` cannot be overwritten. `default` follows existing configuration and is initially selected. Explicit `--profile` overrides the saved selection; `--minutes` overrides only focus duration within that cycle. Focus and both break durations are captured together, so profile/settings edits do not alter active or recovered cycles. A long break still follows every fourth completed focus session.
 
-## Saved task queue
+</details>
+
+### Saved task queue
+
+<details>
+<summary>Add, reorder, and revisit tasks</summary>
 
 ```bash
 python3 -m pomonal task add "Study algorithms"
@@ -119,7 +173,12 @@ python3 -m pomonal task reopen TASK_ID
 
 Use the full ID printed by `task add` or `task list`. The same task commands work inside `ui`. Pending tasks follow queue order; reopened tasks go to its end. Task selection/completion is explicit, with no automatic advancement. You must stop or finish an associated active phase before completing its task. Completion between phases closes the cycle without another history entry. Task renames affect future cycles; current and historical records keep their original title. Ad hoc `start --task "Title"` remains available; it cannot be combined with `--task-id`.
 
-## History and statistics
+</details>
+
+### History and statistics
+
+<details>
+<summary>Review sessions, add notes and tags, and filter reports</summary>
 
 History prints full session IDs for use with annotations. In the workspace, each ID appears on a separate line below its record summary, so it remains readable in narrower terminals.
 
@@ -142,7 +201,12 @@ Daily statistics use the current local calendar day. Weekly statistics use Monda
 
 `stats --week` and the workspace stats screen include seven daily bars, including zero-activity days. Bars share the week's largest daily value as their scale and retain numeric durations. Interactive bars are blue; redirected output and `NO_COLOR` remain plain text. Use `next`/`prev` to page the workspace summary when space is limited.
 
-## CSV export
+</details>
+
+### CSV export
+
+<details>
+<summary>Export finalized sessions to a local CSV file</summary>
 
 ```bash
 python3 -m pomonal export --output reports/sessions.csv
@@ -158,6 +222,8 @@ Use a `.csv` destination inside the project, typically `reports/`. Parent direct
 
 Exports are excluded from Git by the product allowlist. A standalone export acquires the repository writer lock; while a workspace is running, use its internal `export` command or close it first. Export never changes the saved session data.
 
+</details>
+
 ## Local data and safety
 
 All runtime data is stored in `data/state.json` beneath the project root. This versioned JSON document contains configuration, finalized history, and the active cycle. Data and test artifacts are ignored by Git.
@@ -168,7 +234,9 @@ Data paths and files must not be symbolic links; data files must not be hard-lin
 
 No files are written to the home directory, system temporary directory, or global configuration paths. Bytecode generation is disabled during application startup. Do not redirect Python's own startup caches or diagnostics outside this project. Development commands use `-B` explicitly.
 
-## Architecture
+## Development
+
+### Architecture
 
 - `domain`: pure configuration, phase rules, and session creation.
 - `state`: validation of supported data versions and lossless in-memory migration.
@@ -179,9 +247,9 @@ No files are written to the home directory, system temporary directory, or globa
 - `presentation`: argument parsing, command dispatch, display snapshots, and terminal lifecycle.
 - `rendering`: pure display snapshots to positioned frames, ASCII digits, palettes, and Unicode cell-aware layout. It performs no terminal or filesystem I/O.
 
-The entry point assembles concrete adapters. Timer rules are independent of terminal and disk operations. Tests substitute a controllable clock and in-memory repository. This applies SOLID through focused responsibilities and replaceable contracts without introducing a framework.
+The entry point assembles concrete adapters. Timer rules are independent of terminal and disk operations. Tests substitute a controllable clock and in-memory repository. Small contracts keep clocks and storage replaceable without a framework. Productivity use cases share mutable state, and terminal coordination remains centralized; these are areas for further architectural refinement.
 
-## Verification
+### Verification
 
 ```bash
 python3 -B -m unittest discover -s tests -v
