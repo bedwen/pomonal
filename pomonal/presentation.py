@@ -227,6 +227,11 @@ class Terminal:
         self.fullscreen = not plain and os.environ.get("TERM", "").lower() not in ("", "dumb")
         self.color = "NO_COLOR" not in os.environ
         self.truecolor = os.environ.get("COLORTERM", "").lower() in ("truecolor", "24bit")
+        try:
+            "█".encode(sys.stdout.encoding or "utf-8")
+            self.unicode_clock = True
+        except (UnicodeEncodeError, LookupError):
+            self.unicode_clock = False
         self.exit_message = ""
         self._escape = ""
 
@@ -290,7 +295,8 @@ class Terminal:
             return
         columns, rows = self.dimensions()
         if self.fullscreen:
-            frame = render_frame(snapshot, columns, rows, color=self.color, truecolor=self.truecolor)
+            frame = render_frame(snapshot, columns, rows, color=self.color, truecolor=self.truecolor,
+                                 unicode_clock=self.unicode_clock)
             sys.stdout.write(frame.text)
             sys.stdout.flush()
         else:

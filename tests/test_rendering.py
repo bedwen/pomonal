@@ -1,8 +1,13 @@
 """Pure layout tests independent of real-time timer or terminal state."""
 
 from dataclasses import replace
+import io
 import re
 import unittest
+from types import SimpleNamespace
+from unittest.mock import patch
+
+from pomonal.presentation import Terminal
 
 from pomonal.rendering import DisplaySnapshot, cell_width, clean_text, clip_text, daily_bars, render_frame
 
@@ -30,8 +35,8 @@ class RenderingTests(unittest.TestCase):
     def test_large_clock_has_doubled_height_and_normal_time(self):
         large = render_frame(self.snapshot, 100, 28)
         standard = render_frame(self.snapshot, 80, 24)
-        large_pixels = [line for line in large.lines if "#" in line and "[" not in line]
-        standard_pixels = [line for line in standard.lines if "#" in line and "[" not in line]
+        large_pixels = [line for line in large.lines if "█" in line]
+        standard_pixels = [line for line in standard.lines if "█" in line]
         self.assertEqual(len(large_pixels), 10)
         self.assertEqual(len(standard_pixels), 5)
         for frame in (large, standard):
@@ -39,6 +44,51 @@ class RenderingTests(unittest.TestCase):
             self.assertIn("Focus: 75:00", "\n".join(frame.lines))
             self.assertIn("Completed: 3", "\n".join(frame.lines))
             self.assertIn("2 completed | short break next", "\n".join(frame.lines))
+
+    def test_clock_pixels_preserve_geometry_colors_and_ascii_fallback(self):
+        for columns, rows in ((80, 24), (100, 28)):
+            for view in ("dashboard", "focus"):
+                for color, truecolor, code in ((True, False, "\033[94m"),
+                                               (True, True, "\033[38;2;96;165;250m"),
+                                               (False, False, "")):
+                    with self.subTest(columns=columns, view=view, color=color, truecolor=truecolor):
+                        snapshot = replace(self.snapshot, view=view)
+                        blocks = render_frame(snapshot, columns, rows, color=color, truecolor=truecolor)
+                        ascii_frame = render_frame(snapshot, columns, rows, color=color,
+                                                   truecolor=truecolor, unicode_clock=False)
+                        self.assertEqual(tuple(line.replace("█", "#") for line in blocks.lines),
+                                         ascii_frame.lines)
+                        self.assertEqual(blocks.text.replace("█", "#"), ascii_frame.text)
+                        self.assertNotIn("█", ascii_frame.text)
+                        pixels = [line for line in blocks.lines if "█" in line]
+                        self.assertEqual(len(pixels), 10 if columns == 100 else 5)
+                        for line in pixels:
+                            self.assertNotIn("#", line)
+                            self.assertIn(code + line + ("\033[0m" if code else ""), blocks.text)
+                        if view == "dashboard":
+                            self.assertTrue(any("[" in line and "#" in line for line in blocks.lines))
+
+    def test_terminal_selects_clock_pixels_for_output_encoding(self):
+        for encoding, pixel in (("utf-8", "█"), ("ascii", "#")):
+            with self.subTest(encoding=encoding):
+                buffer = io.BytesIO()
+                with io.TextIOWrapper(buffer, encoding=encoding) as output:
+                    with patch("pomonal.presentation.sys.stdout", output):
+                        terminal = Terminal(SimpleNamespace(state={}, checkpoint=lambda: None))
+                        terminal.fullscreen = True
+                        terminal.snapshot = lambda: self.snapshot
+                        terminal.dimensions = lambda: (80, 24)
+                        terminal.render()
+                    text = buffer.getvalue().decode(encoding)
+                    self.assertIn(pixel, text)
+                    self.assertEqual("█" in text, encoding == "utf-8")
+                    self.assertIn("24:15", text)
+
+    def test_compact_clock_keeps_normal_time_without_block_pixels(self):
+        frame = render_frame(replace(self.snapshot, progress=0.5), 40, 10)
+        self.assertIn("24:15 | FOCUS", frame.lines[0])
+        self.assertNotIn("█", frame.text)
+        self.assertTrue(any("[" in line and "#" in line for line in frame.lines))
 
     def test_color_palette_and_monochrome(self):
         self.assertIn("\033[94m", render_frame(self.snapshot, 80, 24).text)
@@ -70,7 +120,7 @@ class RenderingTests(unittest.TestCase):
         frame = render_frame(snapshot, 80, 24)
         expected = str(10**40 // 60) + ":40"
         self.assertIn(expected, "\n".join(frame.lines))
-        self.assertFalse(any("#" in line and "[" not in line for line in frame.lines))
+        self.assertFalse(any("█" in line for line in frame.lines))
 
     def test_extreme_duration_wraps_without_losing_digits(self):
         seconds = 10**100

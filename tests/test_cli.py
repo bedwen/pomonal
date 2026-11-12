@@ -32,6 +32,7 @@ class CliTests(unittest.TestCase):
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
         shutil.copytree(ROOT / "pomonal", self.root / "pomonal", ignore=shutil.ignore_patterns("__pycache__"))
+        shutil.copytree(ROOT / "bin", self.root / "bin")
         self.environment = {**os.environ, "PYTHONDONTWRITEBYTECODE": "1", "TERM": "xterm"}
         self.environment.pop("PYTHONPATH", None)
         self.environment.pop("NO_COLOR", None)
@@ -41,6 +42,25 @@ class CliTests(unittest.TestCase):
     def cli(self, *args):
         return subprocess.run([sys.executable, "-B", "-m", "pomonal", *args],
                               cwd=self.root, env=self.environment, capture_output=True, text=True, timeout=5)
+
+    def test_launcher_from_another_directory_through_symlink(self):
+        working = self.root / "working"
+        working.mkdir()
+        command = working / "pomonal"
+        command.symlink_to(self.root / "bin" / "pomonal")
+        environment = {**self.environment, "PATH": str(working) + os.pathsep + os.environ["PATH"]}
+        result = subprocess.run(["pomonal", "config", "set", "work_minutes", "30"],
+                                cwd=working, env=environment, capture_output=True, text=True, timeout=5)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        state = json.loads((self.root / "data" / "state.json").read_text())
+        self.assertEqual(state["config"]["work_minutes"], 30)
+        self.assertFalse((working / "data").exists())
+
+    def test_launcher_defaults_to_interactive_workspace(self):
+        result = subprocess.run([str(self.root / "bin" / "pomonal")],
+                                cwd=self.root, env=self.environment, capture_output=True, text=True, timeout=5)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("requires an interactive terminal", result.stderr)
 
     def terminal(self, *args, size=(80, 24), environment=None, code=None):
         master, slave = pty.openpty()
@@ -159,7 +179,7 @@ class CliTests(unittest.TestCase):
         output = self.wait_text(master, "01:00")
         self.assertIn("\033[?1049h", output)
         self.assertIn("\033[94m", output)
-        self.assertIn("##", output)
+        self.assertIn("██", output)
         os.write(master, b"pau")
         self.wait_text(master, "> pau")
         for columns, rows in ((64, 20), (40, 10), (100, 28)):
