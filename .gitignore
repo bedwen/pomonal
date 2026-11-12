@@ -4,6 +4,9 @@
 !/.gitignore
 !/README.md
 
+!/bin/
+!/bin/pomonal
+
 !/pomonal/
 !/pomonal/__init__.py
 !/pomonal/__main__.py

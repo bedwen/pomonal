@@ -101,27 +101,29 @@ def daily_bars(days, columns=80):
 
 
 GLYPHS = {
-    "0": ("###", "# #", "# #", "# #", "###"),
-    "1": (" # ", "## ", " # ", " # ", "###"),
-    "2": ("###", "  #", "###", "#  ", "###"),
-    "3": ("###", "  #", "###", "  #", "###"),
-    "4": ("# #", "# #", "###", "  #", "  #"),
-    "5": ("###", "#  ", "###", "  #", "###"),
-    "6": ("###", "#  ", "###", "# #", "###"),
-    "7": ("###", "  #", "  #", "  #", "  #"),
-    "8": ("###", "# #", "###", "# #", "###"),
-    "9": ("###", "# #", "###", "  #", "###"),
-    ":": (" ", "#", " ", "#", " "),
+    "0": ("███", "█ █", "█ █", "█ █", "███"),
+    "1": (" █ ", "██ ", " █ ", " █ ", "███"),
+    "2": ("███", "  █", "███", "█  ", "███"),
+    "3": ("███", "  █", "███", "  █", "███"),
+    "4": ("█ █", "█ █", "███", "  █", "  █"),
+    "5": ("███", "█  ", "███", "  █", "███"),
+    "6": ("███", "█  ", "███", "█ █", "███"),
+    "7": ("███", "  █", "  █", "  █", "  █"),
+    "8": ("███", "█ █", "███", "█ █", "███"),
+    "9": ("███", "█ █", "███", "  █", "███"),
+    ":": (" ", "█", " ", "█", " "),
 }
 
 
-def _digits(value, scale):
+def _digits(value, scale, *, unicode_clock=True):
     rows = [" ".join(GLYPHS[character][row] for character in value) for row in range(5)]
+    if not unicode_clock:
+        rows = [row.replace("█", "#") for row in rows]
     return ["".join(character * scale for character in row) for row in rows
             for _ in range(scale)]
 
 
-def render_frame(snapshot, columns, rows, *, color=True, truecolor=False):
+def render_frame(snapshot, columns, rows, *, color=True, truecolor=False, unicode_clock=True):
     """Return a complete positioned frame without reading or writing a terminal."""
     columns, rows = max(1, columns), max(1, rows)
     width = max(0, columns - 1)
@@ -181,11 +183,11 @@ def render_frame(snapshot, columns, rows, *, color=True, truecolor=False):
         offset = max(0, (usable - len(content)) // 2) if centered else 0
         for index, text in enumerate(content):
             put(y + 1 + offset + index, text, centered=centered,
-                accent=("#" in text or text == time_text or text[:3] in DAY_NAMES), x=x + 1, area=inner)
+                accent=("█" in text or "#" in text or text == time_text or text[:3] in DAY_NAMES), x=x + 1, area=inner)
 
     def clock_lines(area, *, spacious=False):
         scale = 2 if layout == "large" else 1
-        digits = _digits(time_text, scale)
+        digits = _digits(time_text, scale, unicode_clock=unicode_clock)
         if cell_width(digits[0]) <= area:
             body = digits + [time_text]
         else:

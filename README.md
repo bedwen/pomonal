@@ -12,6 +12,22 @@ Its guiding principle is simple: **a focus tool that runs locally, using only Py
 
 ## Quick start
 
+To use the short command, add this project's `bin` directory to your shell's
+`PATH`. For the current terminal, run from the project directory:
+
+```bash
+export PATH="$PWD/bin:$PATH"
+pomonal
+```
+
+`pomonal` opens the workspace. Subcommands also work, for example
+`pomonal stats --today` or `pomonal start --task "Read a book"`.
+The launcher resolves its project location even through a symbolic link, so
+records stay in the project when launched from another directory. To keep the
+command available in future terminals, add the absolute `bin` path to your
+shell configuration or link `bin/pomonal` from a user-owned directory already
+on `PATH`. No Python package installation is needed.
+
 From the project directory, open the workspace:
 
 ```bash
@@ -55,11 +71,11 @@ The layout follows the terminal's actual dimensions, including resizing while yo
 
 | Terminal dimensions | Layout |
 | --- | --- |
-| At least 100 columns and 28 rows | Enlarged ten-row ASCII digital clock. |
-| At least 64 columns and 20 rows | Standard five-row ASCII digital clock. |
+| At least 100 columns and 28 rows | Enlarged ten-row block digital clock. |
+| At least 64 columns and 20 rows | Standard five-row block digital clock. |
 | Smaller | Compact view prioritizing time, status, task, and input. |
 
-A normal-sized time remains visible alongside the digital clock. Minute counts too long for the glyph clock fall back to ordinary text. Very small terminals omit secondary information; enlarge the window to see the full summary and help. Long task names are clipped by display-cell width; the command field shows the end of long input while retaining the full buffer.
+The digital clock uses full block (`█`) pixels, with ASCII (`#`) pixels when the output encoding cannot represent blocks. A normal-sized time remains visible alongside the digital clock. Minute counts too long for the glyph clock fall back to ordinary text. Very small terminals omit secondary information; enlarge the window to see the full summary and help. Long task names are clipped by display-cell width; the command field shows the end of long input while retaining the full buffer.
 
 Messages and command errors appear in a dedicated feedback area. Phase completion shows `00:00`, 100% progress, and an explicit `continue / quit` prompt. The next phase does not start automatically.
 
@@ -245,7 +261,7 @@ No files are written to the home directory, system temporary directory, or globa
 - `reports`: shared finalized-session filtering and local calendar aggregation; `exporting` handles atomic CSV output.
 - `infrastructure`: system clock, local calendar conversion, validated JSON persistence, and locking.
 - `presentation`: argument parsing, command dispatch, display snapshots, and terminal lifecycle.
-- `rendering`: pure display snapshots to positioned frames, ASCII digits, palettes, and Unicode cell-aware layout. It performs no terminal or filesystem I/O.
+- `rendering`: pure display snapshots to positioned frames, block digits, palettes, and Unicode cell-aware layout. It performs no terminal or filesystem I/O.
 
 The entry point assembles concrete adapters. Timer rules are independent of terminal and disk operations. Tests substitute a controllable clock and in-memory repository. Small contracts keep clocks and storage replaceable without a framework. Productivity use cases share mutable state, and terminal coordination remains centralized; these are areas for further architectural refinement.
 

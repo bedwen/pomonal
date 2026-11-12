@@ -1,0 +1,15 @@
+#!/usr/bin/env python3
+"""Launch the project-local application from any working directory."""
+
+import sys
+
+sys.dont_write_bytecode = True
+
+from pathlib import Path
+import runpy
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+if len(sys.argv) == 1:
+    sys.argv.append("ui")
+
+runpy.run_module("pomonal", run_name="__main__")
